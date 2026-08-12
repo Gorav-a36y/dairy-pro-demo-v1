@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <title>Vehicle Search | Vehicle Remarketing and Vehicle Auction | Aston Barclay</title>
+
+        <!-- OneTrust Cookies Consent Notice start for astonbarclay.net -->
+        <script type="text/javascript" src="https://cdn-ukwest.onetrust.com/consent/018e0e2a-b608-77ca-8640-7c5f6808ddcb/OtAutoBlock.js" ></script>
+        <script src="https://cdn-ukwest.onetrust.com/scripttemplates/otSDKStub.js"  type="text/javascript" charset="UTF-8" data-domain-script="018e0e2a-b608-77ca-8640-7c5f6808ddcb" ></script>
+
+        <script type="text/javascript">
+            function OptanonWrapper() { }
+        </script>
+        <!-- OneTrust Cookies Consent Notice end for astonbarclay.net -->
+
+        <!-- Google Tag Manager -->
+        <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-KK8KRZD');</script>
+        <!-- End Google Tag Manager -->
+
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lexend" />
+        <meta name="robots" content="nofollow">
+      <script type="module" crossorigin src="/assets/index-B-t4WrpL.js"></script>
+      <link rel="stylesheet" crossorigin href="/assets/index-B37Nm0Ih.css">
+    </head>
+
+    <body>
+        <noscript> You need to enable JavaScript to run this app.</noscript>
+
+        <div id="root"></div>
+        <!-- 11:19 -->
+
+        <script type="text/javascript">
+            piAId = '935483'
+            piCId = '2011'
+            piHostname = 'pi.pardot.com'
+            ;(function () {
+                function async_load() {
+                    var s = document.createElement('script')
+                    s.type = 'text/javascript'
+                    s.src = ('https:' == document.location.protocol ? 'https://pi' : 'http://cdn') + '.pardot.com/pd.js'
+                    var c = document.getElementsByTagName('script')[0]
+                    c.parentNode.insertBefore(s, c)
+                }
+                if (window.attachEvent) {
+                    window.attachEvent('onload', async_load)
+                } else {
+                    window.addEventListener('load', async_load, false)
+                }
+            })()
+        </script>
+    </body>
+</html>
