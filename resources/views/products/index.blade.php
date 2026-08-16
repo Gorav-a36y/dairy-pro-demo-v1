@@ -12,7 +12,7 @@
         </form>
         <a href="{{ route('products.create') }}"
            class="inline-flex items-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 text-white text-sm font-semibold px-4 py-2.5 shadow-bento-sm transition">
-            <i data-lucide="plus" class="h-4 w-4"></i> Add Product
+            <i data-lucide="flask-conical" class="h-4 w-4"></i> Make a Product
         </a>
     </div>
 
@@ -23,8 +23,8 @@
                     <tr class="text-left text-outline text-[11px] uppercase tracking-wider border-b border-outline-variant">
                         <th class="px-6 py-3 font-semibold">Product</th>
                         <th class="px-6 py-3 font-semibold">Unit</th>
-                        <th class="px-6 py-3 font-semibold">Purchase Price</th>
                         <th class="px-6 py-3 font-semibold">Selling Price</th>
+                        <th class="px-6 py-3 font-semibold">Recipe Yield</th>
                         <th class="px-6 py-3 font-semibold">Stock</th>
                         <th class="px-6 py-3 font-semibold">Status</th>
                         <th class="px-6 py-3 font-semibold text-right">Actions</th>
@@ -42,8 +42,8 @@
                                 </div>
                             </td>
                             <td class="px-6 py-4 text-ink-variant">{{ $product->unit }}</td>
-                            <td class="px-6 py-4 tabular text-ink-variant">{{ $settings->currency }} {{ number_format($product->purchase_price, 0) }}</td>
                             <td class="px-6 py-4 tabular font-semibold text-ink">{{ $settings->currency }} {{ number_format($product->selling_price, 0) }}</td>
+                            <td class="px-6 py-4 text-ink-variant">{{ number_format($product->output_qty_per_batch, 1) }} {{ $product->unit }} / batch</td>
                             <td class="px-6 py-4 tabular text-ink-variant">{{ number_format($product->stock_qty, 1) }} {{ $product->unit }}</td>
                             <td class="px-6 py-4"><x-status-badge :status="$product->is_active ? 'active' : 'inactive'" /></td>
                             <td class="px-6 py-4">
@@ -57,7 +57,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-6 py-10 text-center text-outline">No products yet. Add your first product to get started.</td></tr>
+                        <tr><td colspan="7" class="px-6 py-10 text-center text-outline">No products yet. Make your first product from raw materials.</td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -22,10 +22,9 @@
                 <thead>
                     <tr class="text-left text-outline text-[11px] uppercase tracking-wider border-b border-outline-variant">
                         <th class="px-6 py-3 font-semibold">Raw Material</th>
-                        <th class="px-6 py-3 font-semibold">Stock</th>
-                        <th class="px-6 py-3 font-semibold">Cost / Unit</th>
-                        <th class="px-6 py-3 font-semibold">Reorder Level</th>
-                        <th class="px-6 py-3 font-semibold">Status</th>
+                        <th class="px-6 py-3 font-semibold">Unit</th>
+                        <th class="px-6 py-3 font-semibold">Selling Price</th>
+                        <th class="px-6 py-3 font-semibold">Current Stock</th>
                         <th class="px-6 py-3 font-semibold text-right">Actions</th>
                     </tr>
                 </thead>
@@ -40,22 +39,9 @@
                                     <p class="font-semibold text-ink">{{ $ingredient->name }}</p>
                                 </div>
                             </td>
-                            <td class="px-6 py-4 tabular font-medium {{ $ingredient->isLowStock() ? 'text-clay' : 'text-ink-variant' }}">
-                                {{ number_format($ingredient->stock_qty, 1) }} {{ $ingredient->unit }}
-                            </td>
-                            <td class="px-6 py-4 tabular text-ink-variant">{{ $settings->currency }} {{ number_format($ingredient->cost_per_unit, 2) }}</td>
-                            <td class="px-6 py-4 tabular text-outline">{{ number_format($ingredient->reorder_level, 1) }} {{ $ingredient->unit }}</td>
-                            <td class="px-6 py-4">
-                                @if($ingredient->isLowStock())
-                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-clay-container text-clay border border-clay/20">
-                                        <i data-lucide="alert-triangle" class="h-3 w-3"></i> Low Stock
-                                    </span>
-                                @else
-                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-forest-50 text-forest-800 border border-forest-300/40">
-                                        <i data-lucide="check" class="h-3 w-3"></i> In Stock
-                                    </span>
-                                @endif
-                            </td>
+                            <td class="px-6 py-4 text-ink-variant">{{ $ingredient->unit }}</td>
+                            <td class="px-6 py-4 tabular text-ink font-semibold">{{ $settings->currency }} {{ number_format($ingredient->selling_price, 2) }}</td>
+                            <td class="px-6 py-4 tabular text-ink-variant">{{ number_format($ingredient->stock_qty, 1) }} {{ $ingredient->unit }}</td>
                             <td class="px-6 py-4">
                                 <div class="flex items-center justify-end gap-1">
                                     <a href="{{ route('ingredients.edit', $ingredient) }}" class="p-2 rounded-control text-outline hover:text-forest-700 hover:bg-forest-50 transition"><i data-lucide="pencil" class="h-4 w-4"></i></a>
@@ -67,7 +53,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-6 py-10 text-center text-outline">No raw materials yet. Add one to start building product recipes.</td></tr>
+                        <tr><td colspan="5" class="px-6 py-10 text-center text-outline">No raw materials yet. Add one (e.g. Raw Milk) to get started.</td></tr>
                     @endforelse
                 </tbody>
             </table>

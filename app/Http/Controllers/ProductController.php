@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BatchProduction;
 use App\Models\Ingredient;
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class ProductController extends Controller
 {
@@ -31,28 +34,75 @@ class ProductController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'unit' => 'required|string|in:' . implode(',', Product::UNITS),
-            'purchase_price' => 'required|numeric|min:0',
             'selling_price' => 'required|numeric|min:0',
-            'stock_qty' => 'nullable|numeric|min:0',
-            'output_qty_per_batch' => 'nullable|numeric|min:0.01',
-            'ingredients' => 'array',
-            'ingredients.*.ingredient_id' => 'nullable|exists:ingredients,id',
-            'ingredients.*.quantity_required' => 'nullable|numeric|min:0',
+            'output_qty_per_batch' => 'required|numeric|min:0.01',
+            'ingredients' => 'required|array|min:1',
+            'ingredients.*.ingredient_id' => 'required|exists:ingredients,id',
+            'ingredients.*.quantity_required' => 'required|numeric|min:0.01',
         ]);
 
-        $product = Product::create([
-            'name' => $data['name'],
-            'unit' => $data['unit'],
-            'purchase_price' => $data['purchase_price'],
-            'selling_price' => $data['selling_price'],
-            'stock_qty' => $data['stock_qty'] ?? 0,
-            'output_qty_per_batch' => $data['output_qty_per_batch'] ?? 1,
-            'is_active' => $request->boolean('is_active', true),
-        ]);
+        // Only keep rows where both fields were actually filled in.
+        $recipeRows = collect($data['ingredients'])->filter(
+            fn ($row) => ! empty($row['ingredient_id']) && ! empty($row['quantity_required'])
+        )->values();
 
-        $this->syncRecipe($product, $request->input('ingredients', []));
+        if ($recipeRows->isEmpty()) {
+            return back()->withInput()->with('error', 'Add at least one raw material to the recipe.');
+        }
 
-        return redirect()->route('products.index')->with('success', 'Product created successfully.');
+        // Check raw material stock is sufficient to produce the initial batch right now.
+        foreach ($recipeRows as $row) {
+            $ingredient = Ingredient::find($row['ingredient_id']);
+            if ($ingredient && (float) $row['quantity_required'] > (float) $ingredient->stock_qty) {
+                return back()->withInput()->with('error', "Not enough {$ingredient->name} in stock. Needed: {$row['quantity_required']} {$ingredient->unit}, Available: {$ingredient->stock_qty} {$ingredient->unit}.");
+            }
+        }
+
+        $product = DB::transaction(function () use ($data, $recipeRows) {
+            $product = Product::create([
+                'name' => $data['name'],
+                'unit' => $data['unit'],
+                'selling_price' => $data['selling_price'],
+                'stock_qty' => 0,
+                'output_qty_per_batch' => $data['output_qty_per_batch'],
+                'is_active' => true,
+            ]);
+
+            $sync = [];
+            $productionCost = 0.0;
+
+            foreach ($recipeRows as $row) {
+                $ingredient = Ingredient::findOrFail($row['ingredient_id']);
+                $qty = (float) $row['quantity_required'];
+
+                $sync[$ingredient->id] = ['quantity_required' => $qty];
+                $productionCost += $qty * (float) $ingredient->cost_per_unit;
+
+                $ingredient->decrement('stock_qty', $qty);
+            }
+
+            $product->ingredients()->sync($sync);
+
+            $outputQty = (float) $data['output_qty_per_batch'];
+            $costPerUnit = $outputQty > 0 ? round($productionCost / $outputQty, 2) : 0;
+
+            $product->update(['stock_qty' => $outputQty]);
+
+            BatchProduction::create([
+                'product_id' => $product->id,
+                'user_id' => Auth::id(),
+                'multiplier' => 1,
+                'output_qty' => $outputQty,
+                'batch_cost' => round($productionCost, 2),
+                'cost_per_unit' => $costPerUnit,
+                'status' => 'completed',
+                'notes' => 'Initial production at product creation',
+            ]);
+
+            return $product;
+        });
+
+        return redirect()->route('products.index')->with('success', "Product created — produced {$product->stock_qty} {$product->unit} of {$product->name}.");
     }
 
     public function edit(Product $product)
@@ -68,20 +118,18 @@ class ProductController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'unit' => 'required|string|in:' . implode(',', Product::UNITS),
-            'purchase_price' => 'required|numeric|min:0',
             'selling_price' => 'required|numeric|min:0',
             'stock_qty' => 'nullable|numeric|min:0',
-            'output_qty_per_batch' => 'nullable|numeric|min:0.01',
+            'output_qty_per_batch' => 'required|numeric|min:0.01',
             'ingredients' => 'array',
         ]);
 
         $product->update([
             'name' => $data['name'],
             'unit' => $data['unit'],
-            'purchase_price' => $data['purchase_price'],
             'selling_price' => $data['selling_price'],
             'stock_qty' => $data['stock_qty'] ?? $product->stock_qty,
-            'output_qty_per_batch' => $data['output_qty_per_batch'] ?? $product->output_qty_per_batch,
+            'output_qty_per_batch' => $data['output_qty_per_batch'],
             'is_active' => $request->boolean('is_active', true),
         ]);
 

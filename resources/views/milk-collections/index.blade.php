@@ -26,7 +26,7 @@
     <div class="flex items-center justify-between">
         <div>
             <h3 class="font-serif text-lg font-semibold text-ink">Collection History</h3>
-            <p class="text-sm text-outline">Products bought from farmers and suppliers.</p>
+            <p class="text-sm text-outline">Raw materials bought from farmers and suppliers.</p>
         </div>
         <button type="button" @click="showForm = !showForm"
                 class="inline-flex items-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 text-white text-sm font-semibold px-4 py-2.5 shadow-bento-sm transition">
@@ -45,13 +45,13 @@
             @csrf
             <x-searchable-select name="supplier_id" :options="$suppliers" label="Supplier" placeholder="Search supplier..." required />
 
-            <x-searchable-select name="product_id" :options="$products" label="Product" placeholder="Search product..." required />
+            <x-searchable-select name="ingredient_id" :options="$ingredients" label="Raw Material" placeholder="Search raw material..." required />
 
             <div>
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Quantity</label>
                 <input type="number" step="0.01" min="0.01" name="quantity" x-model="quantity" required
                        class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
-                <p class="text-[11px] text-outline mt-1">Unit is taken automatically from the selected product.</p>
+                <p class="text-[11px] text-outline mt-1">Unit is taken automatically from the selected raw material.</p>
             </div>
 
             <div>
@@ -84,7 +84,7 @@
             </div>
 
             <div class="sm:col-span-2 lg:col-span-3">
-                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Notes (optional)</label>
+                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Note</label>
                 <input type="text" name="notes" placeholder="e.g. quality checked, morning delivery"
                        class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
             </div>
@@ -103,7 +103,7 @@
                 <thead>
                     <tr class="text-left text-outline text-[11px] uppercase tracking-wider border-b border-outline-variant">
                         <th class="px-6 py-3 font-semibold">Supplier</th>
-                        <th class="px-6 py-3 font-semibold">Product</th>
+                        <th class="px-6 py-3 font-semibold">Raw Material</th>
                         <th class="px-6 py-3 font-semibold">Date &amp; Time</th>
                         <th class="px-6 py-3 font-semibold">Quantity</th>
                         <th class="px-6 py-3 font-semibold">Paid</th>
@@ -115,7 +115,7 @@
                     @forelse($collections as $c)
                         <tr class="hover:bg-surface-container-low transition">
                             <td class="px-6 py-3 font-medium text-ink">{{ $c->supplier->name ?? '—' }}</td>
-                            <td class="px-6 py-3 text-ink-variant">{{ $c->product->name ?? '—' }}</td>
+                            <td class="px-6 py-3 text-ink-variant">{{ $c->ingredient->name ?? '—' }}</td>
                             <td class="px-6 py-3 text-outline">{{ $c->collected_at->format('M j, Y g:i A') }}</td>
                             <td class="px-6 py-3 tabular text-ink-variant">{{ number_format($c->quantity, 2) }} {{ $c->unit }}</td>
                             <td class="px-6 py-3 tabular text-ink-variant">{{ $settings->currency }} {{ number_format($c->paid_amount, 0) }}</td>

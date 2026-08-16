@@ -2,37 +2,52 @@
 
 namespace App\Services;
 
+use App\Models\Setting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class OllamaCloudService
 {
-    /**
-     * Send a chat conversation to Ollama Cloud and return the assistant's reply text.
-     *
-     * @param  array<int, array{role: string, content: string}>  $messages
-     */
     public function chat(array $messages): string
     {
-        $url = config('services.ollama_cloud.url');
-        $apiKey = config('services.ollama_cloud.api_key');
-        $model = config('services.ollama_cloud.model');
+        $setting = Setting::current();
+
+        $url    = config('services.ollama_cloud.url');
+        $apiKey = $setting->ollama_api_key;
+        $model  = config('services.ollama_cloud.model');
+
+        // DEBUG: Remove this after fixing
+        Log::debug('Ollama API Key check', [
+            'has_key' => !empty($apiKey),
+            'key_length' => $apiKey ? strlen($apiKey) : 0,
+        ]);
 
         if (empty($apiKey)) {
-            return "The AI Assistant is not configured yet. Please set OLLAMA_CLOUD_API_KEY in your .env file. You can generate a key at ollama.com after signing up for Ollama Cloud.";
+            return "The AI Assistant is not configured yet. Please add your Ollama Cloud API key in Settings → AI Assistant.";
         }
 
         try {
             $response = Http::withToken($apiKey)
                 ->timeout(60)
                 ->post($url, [
-                    'model' => $model,
+                    'model'    => $model,
                     'messages' => $messages,
-                    'stream' => false,
+                    'stream'   => false,
                 ]);
 
             if ($response->failed()) {
-                Log::warning('Ollama Cloud request failed', ['status' => $response->status(), 'body' => $response->body()]);
+                Log::warning('Ollama Cloud request failed', [
+                    'status' => $response->status(),
+                    'body'   => $response->body(),
+                ]);
+
+                if ($response->status() === 401) {
+                    return "Your Ollama Cloud API key appears to be invalid (HTTP 401). Please check it in Settings → AI Assistant.";
+                }
+
+                if ($response->status() === 404) {
+                    return "Sorry, Ollama Cloud couldn't find the model \"{$model}\" (HTTP 404). Cloud models need a \":cloud\" tag.";
+                }
 
                 return 'Sorry, the AI Assistant could not reach Ollama Cloud right now (HTTP ' . $response->status() . '). Please try again in a moment.';
             }

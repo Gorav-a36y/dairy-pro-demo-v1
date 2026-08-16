@@ -25,7 +25,12 @@
                             {{ strtoupper(substr($customer->name, 0, 1)) }}
                         </span>
                         <div>
-                            <p class="font-semibold text-ink">{{ $customer->name }}</p>
+                            <p class="font-semibold text-ink flex items-center gap-2">
+                                {{ $customer->name }}
+                                @if($customer->is_daily_customer)
+                                    <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-forest-50 text-forest-700 border border-forest-300/40">Daily</span>
+                                @endif
+                            </p>
                             <p class="text-xs text-outline">{{ $customer->phone ?? 'No phone on file' }}</p>
                         </div>
                     </div>

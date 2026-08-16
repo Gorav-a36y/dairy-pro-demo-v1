@@ -15,6 +15,7 @@ return new class extends Migration
             $table->text('address')->nullable();
             $table->string('currency', 10)->default('Rs.');
             $table->string('invoice_region', 50)->default('Pakistan (PKT)');
+            $table->text('ollama_api_key')->nullable(); // <-- ADD THIS LINE
             $table->timestamps();
         });
     }

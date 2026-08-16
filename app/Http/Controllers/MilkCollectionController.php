@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Ingredient;
 use App\Models\MilkCollection;
-use App\Models\Product;
 use App\Models\Supplier;
 use App\Models\SupplierTransaction;
 use Illuminate\Http\Request;
@@ -13,7 +13,7 @@ class MilkCollectionController extends Controller
 {
     public function index(Request $request)
     {
-        $collections = MilkCollection::with('supplier', 'product')
+        $collections = MilkCollection::with('supplier', 'ingredient')
             ->when($request->from, fn ($q) => $q->whereDate('collected_at', '>=', $request->from))
             ->when($request->to, fn ($q) => $q->whereDate('collected_at', '<=', $request->to))
             ->orderByDesc('collected_at')
@@ -28,34 +28,34 @@ class MilkCollectionController extends Controller
         $suppliers = Supplier::where('is_active', true)->orderBy('name')->get()
             ->map(fn ($s) => ['id' => $s->id, 'label' => $s->name, 'sublabel' => $s->phone]);
 
-        $products = Product::where('is_active', true)->orderBy('name')->get()
-            ->map(fn ($p) => ['id' => $p->id, 'label' => $p->name, 'sublabel' => $p->unit, 'unit' => $p->unit, 'purchase_price' => (float) $p->purchase_price]);
+        $ingredients = Ingredient::orderBy('name')->get()
+            ->map(fn ($i) => ['id' => $i->id, 'label' => $i->name, 'sublabel' => $i->unit, 'unit' => $i->unit]);
 
-        return view('milk-collections.index', compact('collections', 'todayQty', 'monthQty', 'monthSpend', 'suppliers', 'products'));
+        return view('milk-collections.index', compact('collections', 'todayQty', 'monthQty', 'monthSpend', 'suppliers', 'ingredients'));
     }
 
     public function store(Request $request)
     {
         $data = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
-            'product_id' => 'required|exists:products,id',
+            'ingredient_id' => 'required|exists:ingredients,id',
             'quantity' => 'required|numeric|min:0.01',
             'purchase_price' => 'required|numeric|min:0',
             'paid_amount' => 'nullable|numeric|min:0',
-            'payment_method' => 'required|in:' . implode(',', \App\Models\MilkCollection::PAYMENT_METHODS),
+            'payment_method' => 'required|in:' . implode(',', MilkCollection::PAYMENT_METHODS),
             'notes' => 'nullable|string|max:500',
         ]);
 
-        $product = Product::findOrFail($data['product_id']);
+        $ingredient = Ingredient::findOrFail($data['ingredient_id']);
         $totalAmount = round($data['quantity'] * $data['purchase_price'], 2);
         $paidAmount = $data['paid_amount'] ?? 0;
 
-        DB::transaction(function () use ($data, $product, $totalAmount, $paidAmount) {
+        DB::transaction(function () use ($data, $ingredient, $totalAmount, $paidAmount) {
             $collection = MilkCollection::create([
                 'supplier_id' => $data['supplier_id'],
-                'product_id' => $product->id,
+                'ingredient_id' => $ingredient->id,
                 'quantity' => $data['quantity'],
-                'unit' => $product->unit,
+                'unit' => $ingredient->unit,
                 'purchase_price' => $data['purchase_price'],
                 'total_amount' => $totalAmount,
                 'paid_amount' => $paidAmount,
@@ -64,16 +64,17 @@ class MilkCollectionController extends Controller
                 'notes' => $data['notes'] ?? null,
             ]);
 
-            // Product stock goes up — the supplier delivered it.
-            $product->increment('stock_qty', $data['quantity']);
+            // Raw material stock goes up by the quantity collected, and its cost
+            // basis is refreshed to this latest purchase price (used for production costing).
+            $ingredient->increment('stock_qty', $data['quantity']);
+            $ingredient->update(['cost_per_unit' => $data['purchase_price']]);
 
-            // Ledger: full purchase amount owed, minus whatever was paid on the spot.
             SupplierTransaction::create([
                 'supplier_id' => $data['supplier_id'],
                 'type' => 'purchase',
                 'amount' => $totalAmount,
                 'reference' => 'Milk Collection #' . $collection->id,
-                'notes' => $product->name . ' — ' . $data['quantity'] . ' ' . $product->unit,
+                'notes' => $ingredient->name . ' — ' . $data['quantity'] . ' ' . $ingredient->unit,
                 'transaction_date' => now()->toDateString(),
             ]);
 
@@ -89,7 +90,7 @@ class MilkCollectionController extends Controller
             }
         });
 
-        return back()->with('success', 'Milk collection recorded and stock updated.');
+        return back()->with('success', 'Milk collection recorded and raw material stock updated.');
     }
 
     public function destroy(MilkCollection $milkCollection)

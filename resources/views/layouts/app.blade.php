@@ -101,7 +101,7 @@
 <div class="min-h-screen flex">
 
     {{-- Sidebar --}}
-    <aside class="hidden lg:flex lg:flex-col w-64 shrink-0 bg-forest-900 text-forest-100 min-h-screen sticky top-0">
+    <aside class="hidden lg:flex lg:flex-col w-64 shrink-0 bg-forest-900 text-forest-100 min-h-screen sticky top-0 print:hidden">
         <div class="h-16 flex items-center gap-2.5 px-6 border-b border-white/10">
             <img src="{{ asset('images/dairy_pro_logo.png') }}" alt="DairyPro" class="h-8 w-8 rounded-lg object-cover"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -119,6 +119,7 @@
             <x-nav-link route="sales.pos" icon="shopping-cart" label="New Sale (POS)" />
             <x-nav-link route="sales.history" icon="receipt" label="Sales History" />
             <x-nav-link route="customers.index" icon="users" label="Customers" />
+            <x-nav-link route="daily-round.index" icon="calendar-check" label="Daily Round" />
 
             <p class="px-3 text-[11px] font-semibold uppercase tracking-wider text-forest-300/70 mt-6 mb-2">Procurement</p>
             <x-nav-link route="milk-collections.index" icon="truck" label="Milk Collection" />
@@ -153,7 +154,7 @@
     {{-- Mobile sidebar --}}
     <input type="checkbox" id="mobile-nav-toggle" class="hidden peer">
     <div class="fixed inset-0 z-40 bg-forest-900/60 hidden peer-checked:block lg:hidden" onclick="document.getElementById('mobile-nav-toggle').checked=false"></div>
-    <aside class="fixed z-50 inset-y-0 left-0 w-72 bg-forest-900 text-forest-100 -translate-x-full peer-checked:translate-x-0 transition-transform lg:hidden overflow-y-auto">
+    <aside class="fixed z-50 inset-y-0 left-0 w-72 bg-forest-900 text-forest-100 -translate-x-full peer-checked:translate-x-0 transition-transform lg:hidden overflow-y-auto print:hidden">
         <div class="h-16 flex items-center justify-between px-5 border-b border-white/10 sticky top-0 bg-forest-900">
             <span class="font-serif font-semibold text-white text-lg">{{ $settings->dairy_name ?? 'DairyPro' }}</span>
             <label for="mobile-nav-toggle" class="text-forest-300"><i data-lucide="x" class="h-5 w-5"></i></label>
@@ -163,6 +164,7 @@
             <x-nav-link route="sales.pos" icon="shopping-cart" label="New Sale (POS)" />
             <x-nav-link route="sales.history" icon="receipt" label="Sales History" />
             <x-nav-link route="customers.index" icon="users" label="Customers" />
+            <x-nav-link route="daily-round.index" icon="calendar-check" label="Daily Round" />
             <x-nav-link route="milk-collections.index" icon="truck" label="Milk Collection" />
             <x-nav-link route="suppliers.index" icon="tractor" label="Suppliers / Farmers" />
             <x-nav-link route="batches.index" icon="flask-conical" label="Batch Production" />
@@ -177,7 +179,7 @@
 
     {{-- Main --}}
     <div class="flex-1 min-w-0 flex flex-col">
-        <header class="h-16 sticky top-0 z-30 bg-surface/90 backdrop-blur border-b border-outline-variant flex items-center justify-between px-4 lg:px-8">
+        <header class="h-16 sticky top-0 z-30 bg-surface/90 backdrop-blur border-b border-outline-variant flex items-center justify-between px-4 lg:px-8 print:hidden">
             <div class="flex items-center gap-3">
                 <label for="mobile-nav-toggle" class="lg:hidden text-outline"><i data-lucide="menu" class="h-5 w-5"></i></label>
                 <h1 class="font-serif text-lg font-semibold text-ink">@yield('page-title', 'Dashboard')</h1>
@@ -229,7 +231,7 @@
             @yield('content')
         </main>
 
-        <footer class="px-4 lg:px-8 py-6 text-center text-xs text-outline border-t border-outline-variant">
+        <footer class="px-4 lg:px-8 py-6 text-center text-xs text-outline border-t border-outline-variant print:hidden">
             {{ $settings->dairy_name ?? 'DairyPro' }} &copy; {{ now()->year }} — Built by
             <a href="{{ config('app.brand_url') }}" target="_blank" class="font-semibold text-ink-variant hover:text-forest-700">
                 <span class="text-ink">Gorav</span><span class="text-forest-700">AI</span>

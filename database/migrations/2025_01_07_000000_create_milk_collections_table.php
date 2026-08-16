@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('milk_collections', function (Blueprint $table) {
             $table->id();
             $table->foreignId('supplier_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('ingredient_id')->constrained()->cascadeOnDelete();
             $table->decimal('quantity', 12, 2);
             $table->string('unit', 20);
             $table->decimal('purchase_price', 12, 2);

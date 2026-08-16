@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\CustomerTransaction;
 use App\Models\Product;
 use App\Models\Sale;
-use App\Models\SaleItem;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -18,10 +17,10 @@ class DashboardController extends Controller
         $todaySalesCount = Sale::whereDate('sale_date', $today)->count();
         $todayRevenue = Sale::whereDate('sale_date', $today)->sum('total_amount');
 
-        $milkSoldToday = SaleItem::join('sales', 'sales.id', '=', 'sale_items.sale_id')
-            ->join('products', 'products.id', '=', 'sale_items.product_id')
+        $milkSoldToday = DB::table('sale_items')
+            ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
             ->whereDate('sales.sale_date', $today)
-            ->where('products.unit', 'Liter')
+            ->where('sale_items.unit', 'Liter')
             ->sum('sale_items.quantity');
 
         $outstandingKhata = max(

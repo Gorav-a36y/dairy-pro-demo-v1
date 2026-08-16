@@ -12,9 +12,9 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('unit', 20)->default('Liter');
-            $table->decimal('purchase_price', 12, 2)->default(0);
             $table->decimal('selling_price', 12, 2)->default(0);
             $table->decimal('stock_qty', 12, 2)->default(0);
+            // Recipe output/yield: how many units one full production run makes.
             $table->decimal('output_qty_per_batch', 12, 2)->default(1);
             $table->boolean('is_active')->default(true);
             $table->timestamps();

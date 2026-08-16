@@ -9,14 +9,12 @@ class Product extends Model
     const UNITS = ['Liter', 'Kilogram', 'Gram', 'Piece', 'Packet', 'Bottle', 'Box', 'Dozen'];
 
     protected $fillable = [
-        'name', 'unit', 'purchase_price', 'selling_price',
-        'stock_qty', 'output_qty_per_batch', 'is_active',
+        'name', 'unit', 'selling_price', 'stock_qty', 'output_qty_per_batch', 'is_active',
     ];
 
     protected function casts(): array
     {
         return [
-            'purchase_price' => 'decimal:2',
             'selling_price' => 'decimal:2',
             'stock_qty' => 'decimal:2',
             'output_qty_per_batch' => 'decimal:2',
@@ -41,6 +39,7 @@ class Product extends Model
         return $this->hasMany(SaleItem::class);
     }
 
+    /** Cost to produce one full recipe yield (output_qty_per_batch units) at current raw material costs. */
     public function baseBatchCost(): float
     {
         $cost = 0.0;
@@ -54,5 +53,11 @@ class Product extends Model
     {
         $output = (float) $this->output_qty_per_batch ?: 1;
         return round($this->baseBatchCost() / $output, 2);
+    }
+
+    /** Most recent production run's cost/date, for display on the product page. */
+    public function latestBatch()
+    {
+        return $this->batchProductions()->latest()->first();
     }
 }

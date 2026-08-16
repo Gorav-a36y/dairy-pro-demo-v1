@@ -27,11 +27,10 @@ class ReportController extends Controller
             ->get();
 
         $productPerformance = DB::table('sale_items')
-            ->join('products', 'products.id', '=', 'sale_items.product_id')
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
             ->whereBetween('sales.sale_date', [$from, $to])
-            ->select('products.name', DB::raw('SUM(sale_items.quantity) as qty'), DB::raw('SUM(sale_items.subtotal) as revenue'))
-            ->groupBy('products.name')
+            ->select('sale_items.item_name as name', DB::raw('SUM(sale_items.quantity) as qty'), DB::raw('SUM(sale_items.subtotal) as revenue'))
+            ->groupBy('sale_items.item_name')
             ->orderByDesc('revenue')
             ->get();
 

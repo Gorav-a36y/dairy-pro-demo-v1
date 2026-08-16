@@ -18,8 +18,8 @@
             </div>
             <div>
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Opening Balance ({{ $settings->currency ?? 'Rs.' }})</label>
-                <input type="number" step="0.01" name="opening_balance" value="{{ old('opening_balance', $supplier->opening_balance ?? 0) }}"
-                       class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+                <input type="number" step="0.01" name="opening_balance" value="{{ old('opening_balance', $supplier->opening_balance ?? 0) }}" {{ $isEdit ? 'disabled' : '' }}
+                       class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700 {{ $isEdit ? 'bg-surface-container-low text-outline cursor-not-allowed' : '' }}">
             </div>
         </div>
         <div>

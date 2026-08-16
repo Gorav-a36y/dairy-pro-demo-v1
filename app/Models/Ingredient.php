@@ -6,14 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 
 class Ingredient extends Model
 {
-    protected $fillable = ['name', 'unit', 'stock_qty', 'cost_per_unit', 'reorder_level'];
+    protected $fillable = ['name', 'unit', 'selling_price', 'stock_qty', 'cost_per_unit'];
 
     protected function casts(): array
     {
         return [
+            'selling_price' => 'decimal:2',
             'stock_qty' => 'decimal:2',
             'cost_per_unit' => 'decimal:2',
-            'reorder_level' => 'decimal:2',
         ];
     }
 
@@ -24,8 +24,8 @@ class Ingredient extends Model
             ->withTimestamps();
     }
 
-    public function isLowStock(): bool
+    public function milkCollections()
     {
-        return (float) $this->stock_qty <= (float) $this->reorder_level;
+        return $this->hasMany(MilkCollection::class);
     }
 }

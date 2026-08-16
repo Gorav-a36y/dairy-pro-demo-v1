@@ -36,38 +36,12 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Gorav Admin', 'password' => Hash::make('password'), 'role' => 'admin']
         );
 
-        // Raw materials used for batch production recipes
-        $milkIngredient = Ingredient::firstOrCreate(['name' => 'Raw Milk'], ['unit' => 'Liter', 'stock_qty' => 500, 'cost_per_unit' => 120, 'reorder_level' => 100]);
-        $culture = Ingredient::firstOrCreate(['name' => 'Yogurt Culture'], ['unit' => 'Gram', 'stock_qty' => 200, 'cost_per_unit' => 15, 'reorder_level' => 50]);
-        $sugar = Ingredient::firstOrCreate(['name' => 'Sugar'], ['unit' => 'Kilogram', 'stock_qty' => 100, 'cost_per_unit' => 180, 'reorder_level' => 20]);
-        $salt = Ingredient::firstOrCreate(['name' => 'Salt'], ['unit' => 'Kilogram', 'stock_qty' => 50, 'cost_per_unit' => 60, 'reorder_level' => 10]);
-        $cream = Ingredient::firstOrCreate(['name' => 'Cream'], ['unit' => 'Liter', 'stock_qty' => 80, 'cost_per_unit' => 350, 'reorder_level' => 15]);
-
-        // Products sold to customers
-        $milkProduct = Product::firstOrCreate(
-            ['name' => 'Fresh Toned Milk'],
-            ['unit' => 'Liter', 'purchase_price' => 130, 'selling_price' => 180, 'stock_qty' => 40, 'output_qty_per_batch' => 100, 'is_active' => true]
-        );
-        $milkProduct->ingredients()->sync([$milkIngredient->id => ['quantity_required' => 100]]);
-
-        $yogurt = Product::firstOrCreate(
-            ['name' => 'Plain Yogurt'],
-            ['unit' => 'Kilogram', 'purchase_price' => 190, 'selling_price' => 260, 'stock_qty' => 25, 'output_qty_per_batch' => 50, 'is_active' => true]
-        );
-        $yogurt->ingredients()->sync([
-            $milkIngredient->id => ['quantity_required' => 45],
-            $culture->id => ['quantity_required' => 25],
-            $sugar->id => ['quantity_required' => 2],
-        ]);
-
-        $butter = Product::firstOrCreate(
-            ['name' => 'Farm Butter'],
-            ['unit' => 'Kilogram', 'purchase_price' => 700, 'selling_price' => 950, 'stock_qty' => 12, 'output_qty_per_batch' => 20, 'is_active' => true]
-        );
-        $butter->ingredients()->sync([
-            $cream->id => ['quantity_required' => 25],
-            $salt->id => ['quantity_required' => 1],
-        ]);
+        // Raw materials — sellable directly (e.g. loose milk) AND used in product recipes.
+        $milk = Ingredient::firstOrCreate(['name' => 'Raw Milk'], ['unit' => 'Liter', 'selling_price' => 170, 'stock_qty' => 500, 'cost_per_unit' => 130]);
+        $culture = Ingredient::firstOrCreate(['name' => 'Yogurt Culture'], ['unit' => 'Gram', 'selling_price' => 0, 'stock_qty' => 200, 'cost_per_unit' => 15]);
+        $sugar = Ingredient::firstOrCreate(['name' => 'Sugar'], ['unit' => 'Kilogram', 'selling_price' => 0, 'stock_qty' => 100, 'cost_per_unit' => 180]);
+        $salt = Ingredient::firstOrCreate(['name' => 'Salt'], ['unit' => 'Kilogram', 'selling_price' => 0, 'stock_qty' => 50, 'cost_per_unit' => 60]);
+        $cream = Ingredient::firstOrCreate(['name' => 'Cream'], ['unit' => 'Liter', 'selling_price' => 0, 'stock_qty' => 80, 'cost_per_unit' => 350]);
 
         // Suppliers / farmers
         $suppliers = collect(['Ahmed Dairy Farm', 'Bashir Livestock', 'Noor Farms'])
@@ -77,7 +51,6 @@ class DatabaseSeeder extends Seeder
                 'is_active' => true,
             ]));
 
-        // A few sample milk collections
         foreach ($suppliers as $supplier) {
             $qty = rand(20, 60);
             $price = 130;
@@ -85,7 +58,7 @@ class DatabaseSeeder extends Seeder
             $paid = $total * 0.6;
 
             $collection = MilkCollection::firstOrCreate(
-                ['supplier_id' => $supplier->id, 'product_id' => $milkProduct->id, 'collected_at' => Carbon::today()->setTime(7, 0)],
+                ['supplier_id' => $supplier->id, 'ingredient_id' => $milk->id, 'collected_at' => Carbon::today()->setTime(7, 0)],
                 ['quantity' => $qty, 'unit' => 'Liter', 'purchase_price' => $price, 'total_amount' => $total, 'paid_amount' => $paid, 'payment_method' => 'cash']
             );
 
@@ -99,12 +72,58 @@ class DatabaseSeeder extends Seeder
             );
         }
 
+        // Products manufactured from raw materials — each gets an initial production run.
+        $yogurt = Product::firstOrCreate(
+            ['name' => 'Plain Yogurt (Dahi)'],
+            ['unit' => 'Kilogram', 'selling_price' => 260, 'stock_qty' => 0, 'output_qty_per_batch' => 50, 'is_active' => true]
+        );
+        $yogurtRecipe = [$milk->id => ['quantity_required' => 45], $culture->id => ['quantity_required' => 25], $sugar->id => ['quantity_required' => 2]];
+        $yogurt->ingredients()->sync($yogurtRecipe);
+
+        $butter = Product::firstOrCreate(
+            ['name' => 'Farm Butter'],
+            ['unit' => 'Kilogram', 'selling_price' => 950, 'stock_qty' => 0, 'output_qty_per_batch' => 20, 'is_active' => true]
+        );
+        $butterRecipe = [$cream->id => ['quantity_required' => 25], $salt->id => ['quantity_required' => 1]];
+        $butter->ingredients()->sync($butterRecipe);
+
+        foreach ([[$yogurt, $yogurtRecipe], [$butter, $butterRecipe]] as [$product, $recipe]) {
+            if ($product->batchProductions()->exists()) {
+                continue;
+            }
+
+            $cost = 0;
+            foreach ($recipe as $ingredientId => $row) {
+                $ingredient = Ingredient::find($ingredientId);
+                $cost += $row['quantity_required'] * (float) $ingredient->cost_per_unit;
+                $ingredient->decrement('stock_qty', $row['quantity_required']);
+            }
+
+            $product->update(['stock_qty' => $product->output_qty_per_batch]);
+
+            BatchProduction::create([
+                'product_id' => $product->id,
+                'user_id' => $admin->id,
+                'multiplier' => 1,
+                'output_qty' => $product->output_qty_per_batch,
+                'batch_cost' => round($cost, 2),
+                'cost_per_unit' => round($cost / $product->output_qty_per_batch, 2),
+                'status' => 'completed',
+                'notes' => 'Initial production at product creation (seeded)',
+            ]);
+        }
+
         // Customers
         $customers = collect(['Ali General Store', 'Karachi Fresh Mart', 'Sunrise Bakery', 'Green Valley Hotel'])
             ->map(fn ($name) => Customer::firstOrCreate(['name' => $name], ['phone' => '03' . rand(100000000, 999999999)]));
 
-        // Seed last 7 days of sales for the revenue trend chart
-        $products = [$milkProduct, $yogurt, $butter];
+        // Seed last 7 days of sales for the revenue trend chart — mixing raw-material and product sales.
+        $sellables = [
+            ['type' => 'ingredient', 'model' => $milk],
+            ['type' => 'product', 'model' => $yogurt],
+            ['type' => 'product', 'model' => $butter],
+        ];
+
         for ($i = 6; $i >= 0; $i--) {
             $date = Carbon::today()->subDays($i);
             $ordersToday = rand(1, 3);
@@ -128,16 +147,21 @@ class DatabaseSeeder extends Seeder
 
                 $total = 0;
                 foreach ([1, 2] as $line) {
-                    $product = $products[array_rand($products)];
+                    $pick = $sellables[array_rand($sellables)];
+                    $model = $pick['model'];
                     $qty = rand(2, 8);
-                    $subtotal = $qty * (float) $product->selling_price;
+                    $subtotal = $qty * (float) $model->selling_price;
                     $total += $subtotal;
 
                     SaleItem::create([
                         'sale_id' => $sale->id,
-                        'product_id' => $product->id,
+                        'item_type' => $pick['type'],
+                        'item_id' => $model->id,
+                        'item_name' => $model->name,
+                        'unit' => $model->unit,
                         'quantity' => $qty,
-                        'unit_price' => $product->selling_price,
+                        'unit_price' => $model->selling_price,
+                        'discount' => 0,
                         'subtotal' => $subtotal,
                     ]);
                 }
@@ -160,17 +184,5 @@ class DatabaseSeeder extends Seeder
                 }
             }
         }
-
-        BatchProduction::firstOrCreate(
-            ['product_id' => $milkProduct->id, 'multiplier' => 1],
-            [
-                'user_id' => $admin->id,
-                'output_qty' => 100,
-                'batch_cost' => 12000,
-                'cost_per_unit' => 120,
-                'status' => 'completed',
-                'notes' => 'Seeded demo batch',
-            ]
-        );
     }
 }

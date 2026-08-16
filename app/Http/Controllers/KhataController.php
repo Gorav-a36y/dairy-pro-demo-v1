@@ -14,59 +14,108 @@ class KhataController extends Controller
     {
         $tab = $request->get('tab', 'customer');
 
-        $customers = Customer::orderBy('name')->get()->map(function ($c) {
-            $c->balance = $c->currentBalance();
-            return $c;
-        });
+        /* ── Customers: balance = khata − payment (single query) ── */
+        $customers = Customer::orderBy('name')
+            ->select('customers.*')
+            ->selectRaw('(
+                SELECT COALESCE(SUM(amount),0) FROM customer_transactions
+                WHERE customer_transactions.customer_id = customers.id AND type = ?
+            ) as total_khata', ['khata'])
+            ->selectRaw('(
+                SELECT COALESCE(SUM(amount),0) FROM customer_transactions
+                WHERE customer_transactions.customer_id = customers.id AND type = ?
+            ) as total_payment', ['payment'])
+            ->get()
+            ->map(function ($c) {
+                $c->balance = round((float) $c->total_khata - (float) $c->total_payment, 2);
+                return $c;
+            });
 
-        $suppliers = Supplier::orderBy('name')->get()->map(function ($s) {
-            $s->balance = $s->currentBalance();
-            return $s;
-        });
+        /* ── Suppliers: balance = opening + purchase − payment (single query) ── */
+        $suppliers = Supplier::orderBy('name')
+            ->select('suppliers.*')
+            ->selectRaw('(
+                SELECT COALESCE(SUM(amount),0) FROM supplier_transactions
+                WHERE supplier_transactions.supplier_id = suppliers.id AND type = ?
+            ) as total_purchase', ['purchase'])
+            ->selectRaw('(
+                SELECT COALESCE(SUM(amount),0) FROM supplier_transactions
+                WHERE supplier_transactions.supplier_id = suppliers.id AND type = ?
+            ) as total_payment', ['payment'])
+            ->get()
+            ->map(function ($s) {
+                $s->balance = round(
+                    (float) ($s->opening_balance ?? 0)
+                    + (float) $s->total_purchase
+                    - (float) $s->total_payment,
+                    2
+                );
+                return $s;
+            });
 
         $selectedCustomer = null;
         $selectedSupplier = null;
 
         if ($tab === 'customer' && $request->id) {
-            $selectedCustomer = Customer::with(['transactions'])->find($request->id);
+            $selectedCustomer = Customer::with(['transactions' => function ($q) {
+                $q->orderBy('transaction_date', 'asc')->orderBy('id', 'asc');
+            }])->find($request->id);
+
+            if ($selectedCustomer) {
+                $selectedCustomer->balance = $customers->firstWhere('id', $selectedCustomer->id)->balance ?? 0;
+            }
         } elseif ($tab === 'supplier' && $request->id) {
-            $selectedSupplier = Supplier::with(['transactions'])->find($request->id);
+            $selectedSupplier = Supplier::with(['transactions' => function ($q) {
+                $q->orderBy('transaction_date', 'asc')->orderBy('id', 'asc');
+            }])->find($request->id);
+
+            if ($selectedSupplier) {
+                $selectedSupplier->balance = $suppliers->firstWhere('id', $selectedSupplier->id)->balance ?? 0;
+            }
         }
 
-        return view('khata.index', compact('tab', 'customers', 'suppliers', 'selectedCustomer', 'selectedSupplier'));
+        return view('khata.index', compact(
+            'tab', 'customers', 'suppliers', 'selectedCustomer', 'selectedSupplier'
+        ));
     }
 
     public function storeCustomerTransaction(Request $request)
     {
         $data = $request->validate([
             'customer_id' => 'required|exists:customers,id',
-            'type' => 'required|in:khata,payment',
-            'amount' => 'required|numeric|min:0.01',
-            'invoice_no' => 'nullable|string|max:100',
-            'notes' => 'nullable|string|max:500',
-            'transaction_date' => 'required|date',
+            'amount'      => 'required|numeric|min:0.01',
+            'notes'       => 'nullable|string|max:500',
         ]);
 
-        CustomerTransaction::create($data);
+        CustomerTransaction::create([
+            'customer_id'      => $data['customer_id'],
+            'type'             => 'payment',
+            'amount'           => $data['amount'],
+            'notes'            => $data['notes'],
+            'transaction_date' => now()->toDateString(),
+        ]);
 
         return redirect()->route('khata.index', ['tab' => 'customer', 'id' => $data['customer_id']])
-            ->with('success', 'Transaction added to customer khata.');
+            ->with('success', 'Payment recorded successfully.');
     }
 
     public function storeSupplierTransaction(Request $request)
     {
         $data = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
-            'type' => 'required|in:purchase,payment',
-            'amount' => 'required|numeric|min:0.01',
-            'reference' => 'nullable|string|max:100',
-            'notes' => 'nullable|string|max:500',
-            'transaction_date' => 'required|date',
+            'amount'      => 'required|numeric|min:0.01',
+            'notes'       => 'nullable|string|max:500',
         ]);
 
-        SupplierTransaction::create($data);
+        SupplierTransaction::create([
+            'supplier_id'      => $data['supplier_id'],
+            'type'             => 'payment',
+            'amount'           => $data['amount'],
+            'notes'            => $data['notes'],
+            'transaction_date' => now()->toDateString(),
+        ]);
 
         return redirect()->route('khata.index', ['tab' => 'supplier', 'id' => $data['supplier_id']])
-            ->with('success', 'Transaction added to supplier khata.');
+            ->with('success', 'Payment recorded successfully.');
     }
 }

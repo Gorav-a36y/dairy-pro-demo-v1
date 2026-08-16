@@ -9,7 +9,7 @@ class MilkCollection extends Model
     const PAYMENT_METHODS = ['cash', 'easypaisa', 'jazzcash'];
 
     protected $fillable = [
-        'supplier_id', 'product_id', 'quantity', 'unit', 'purchase_price',
+        'supplier_id', 'ingredient_id', 'quantity', 'unit', 'purchase_price',
         'total_amount', 'paid_amount', 'payment_method', 'collected_at', 'notes',
     ];
 
@@ -23,8 +23,8 @@ class MilkCollection extends Model
         return $this->belongsTo(Supplier::class);
     }
 
-    public function product()
+    public function ingredient()
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(Ingredient::class);
     }
 }

@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\AiAssistantController;
 use App\Http\Controllers\BatchProductionController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\DailyRoundController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\IngredientController;
 use App\Http\Controllers\KhataController;
@@ -35,6 +36,9 @@ Route::middleware('auth')->group(function () {
     Route::delete('/sales/{sale}', [SaleController::class, 'destroy'])->name('sales.destroy');
 
     Route::resource('customers', CustomerController::class)->except(['show']);
+
+    Route::get('/daily-round', [DailyRoundController::class, 'index'])->name('daily-round.index');
+    Route::post('/daily-round', [DailyRoundController::class, 'store'])->name('daily-round.store');
 
     // Procurement
     Route::get('/milk-collections', [MilkCollectionController::class, 'index'])->name('milk-collections.index');
