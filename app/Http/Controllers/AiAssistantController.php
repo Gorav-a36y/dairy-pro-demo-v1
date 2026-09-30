@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use App\Models\CustomerTransaction;
-use App\Models\Ingredient;
 use App\Models\Product;
+use App\Models\RawMaterial;
 use App\Models\Sale;
 use App\Models\Setting;
 use App\Models\Supplier;
@@ -96,7 +96,7 @@ class AiAssistantController extends Controller
             ->map(fn ($p) => "{$p->name} ({$p->unit}, stock {$p->stock_qty}, sells {$currency}{$p->selling_price})")
             ->implode('; ');
 
-        $ingredients = Ingredient::all()
+        $ingredients = RawMaterial::all()
             ->map(fn ($i) => "{$i->name} ({$i->unit}, stock {$i->stock_qty}, sells {$currency}{$i->selling_price})")
             ->implode('; ');
 

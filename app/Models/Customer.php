@@ -9,13 +9,15 @@ class Customer extends Model
     protected $fillable = [
         'name', 'phone', 'email', 'address',
         'is_daily_customer', 'daily_item_type', 'daily_item_id', 'daily_quantity',
+        'balance',
     ];
 
     protected function casts(): array
     {
         return [
             'is_daily_customer' => 'boolean',
-            'daily_quantity' => 'decimal:2',
+            'daily_quantity'    => 'decimal:2',
+            'balance'           => 'decimal:2',
         ];
     }
 
@@ -26,36 +28,64 @@ class Customer extends Model
 
     public function transactions()
     {
-        return $this->hasMany(CustomerTransaction::class)->orderByDesc('transaction_date')->orderByDesc('id');
+        return $this->hasMany(CustomerTransaction::class)
+            ->orderByDesc('transaction_date')
+            ->orderByDesc('id');
     }
 
-    /** How much this customer currently owes on khata. */
+    /** Live calculated balance (khata minus payments). */
     public function currentBalance(): float
     {
-        $khata = $this->transactions()->where('type', 'khata')->sum('amount');
-        $payments = $this->transactions()->where('type', 'payment')->sum('amount');
+        $khata    = (float) $this->transactions()->where('type', CustomerTransaction::TYPE_KHATA)->sum('amount');
+        $payments = (float) $this->transactions()->where('type', CustomerTransaction::TYPE_PAYMENT)->sum('amount');
 
-        return round((float) $khata - (float) $payments, 2);
+        return round($khata - $payments, 2);
     }
 
-    /** Resolve their assigned daily item back to the real Product or Ingredient model. */
-    public function dailyItem()
+    /** Resolve their assigned daily item. */
+    public function dailyItem(): ?Model
     {
         if (! $this->daily_item_type || ! $this->daily_item_id) {
             return null;
         }
 
-        return $this->daily_item_type === 'product'
-            ? Product::find($this->daily_item_id)
-            : Ingredient::find($this->daily_item_id);
+        return match ($this->daily_item_type) {
+            'product'      => Product::find($this->daily_item_id),
+            'raw_material' => RawMaterial::find($this->daily_item_id),
+            default        => null,
+        };
     }
 
-    /** Has today's delivery already been logged for this daily customer? */
     public function hasDeliveryToday(): bool
     {
-        return $this->sales()
-            ->whereDate('sale_date', now()->toDateString())
-            ->where('payment_status', 'unpaid')
+        if (! $this->daily_item_type || ! $this->daily_item_id) {
+            return false;
+        }
+
+        return SaleItem::whereHas('sale', function ($q) {
+                $q->where('customer_id', $this->id)
+                    ->where('source', Sale::SOURCE_DAILY_ROUND)
+                    ->whereDate('sale_date', now()->toDateString());
+            })
+            ->where('item_type', $this->daily_item_type)
+            ->where('item_id', $this->daily_item_id)
+            ->exists();
+    }
+
+    public function hasUnpaidDeliveryToday(): bool
+    {
+        if (! $this->daily_item_type || ! $this->daily_item_id) {
+            return false;
+        }
+
+        return SaleItem::whereHas('sale', function ($q) {
+                $q->where('customer_id', $this->id)
+                    ->where('source', Sale::SOURCE_DAILY_ROUND)
+                    ->whereDate('sale_date', now()->toDateString())
+                    ->where('payment_status', Sale::STATUS_UNPAID);
+            })
+            ->where('item_type', $this->daily_item_type)
+            ->where('item_id', $this->daily_item_id)
             ->exists();
     }
 }

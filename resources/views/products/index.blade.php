@@ -3,68 +3,201 @@
 @section('page-title', 'Products')
 
 @section('content')
-<div class="space-y-6">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <form method="GET" class="relative w-full sm:max-w-xs">
-            <i data-lucide="search" class="h-4 w-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-            <input type="text" name="search" value="{{ request('search') }}" placeholder="Search products..."
-                   class="w-full rounded-control border border-outline-variant bg-white pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+<div class="space-y-8">
+
+    {{-- ==================== SEARCH + ADD ==================== --}}
+    <div class="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-4">
+        <form method="GET"
+            class="bg-white rounded-bento border border-outline-variant shadow-bento p-4 flex items-center gap-4 w-full sm:flex-1 min-w-0">
+            <x-search-bar name="search" placeholder="Search products..."
+                        x-data @input.debounce.400ms="$event.target.form.requestSubmit()" />
         </form>
+
         <a href="{{ route('products.create') }}"
-           class="inline-flex items-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 text-white text-sm font-semibold px-4 py-2.5 shadow-bento-sm transition">
+        class="shrink-0 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control bg-forest-700 hover:bg-forest-800 text-white text-sm font-semibold px-5 py-3 shadow-bento-sm transition">
             <i data-lucide="flask-conical" class="h-4 w-4"></i> Make a Product
         </a>
     </div>
 
-    <div class="bg-white rounded-bento border border-outline-variant shadow-bento overflow-hidden">
+    {{-- ==================== RUN A PRODUCTION BATCH ==================== --}}
+    <div class="space-y-6 mt-8">
+    <div>
+        <h2 class="font-serif text-xl font-semibold text-ink mb-1">Products &amp; Production Batches</h2>
+            <p class="text-sm text-outline">Manage each product's status and recipe, and run a production batch — stock is deducted and produced automatically.</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            @forelse($products as $product)
+               @php
+                    $recipe = $product->rawMaterials->map(fn($i) => [
+                        'id' => $i->id, 'name' => $i->name, 'unit' => $i->unit,
+                        'qty' => (float) $i->pivot->quantity_required,
+                        'cost' => $i->currentCostPerUnit(),
+                        'available' => (float) $i->stock_qty,
+                    ]);
+                @endphp
+                <div class="bg-white rounded-bento border border-outline-variant shadow-bento overflow-hidden flex flex-col {{ !$product->is_active ? 'opacity-70' : '' }}"
+                     x-data="{
+                        multiplier: 1,
+                        recipe: {{ $recipe->toJson() }},
+                        outputPerBatch: {{ $product->output_qty_per_batch }},
+                        get batchCost() { return this.recipe.reduce((sum, r) => sum + (r.qty * this.multiplier * r.cost), 0) },
+                        get outputQty() { return this.outputPerBatch * this.multiplier },
+                        get costPerUnit() { return this.outputQty > 0 ? this.batchCost / this.outputQty : 0 },
+                        get canRun() { return this.recipe.length > 0 && this.recipe.every(r => (r.qty * this.multiplier) <= r.available) }
+                     }">
+                    <div class="p-6 pb-0">
+                        <div class="flex items-start justify-between mb-4 gap-3">
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold tracking-wide bg-forest-50 text-forest-700 border border-forest-300/40 uppercase">
+                                <i data-lucide="flask-conical" class="h-3 w-3"></i>
+                                {{ number_format($product->output_qty_per_batch, 0) }} {{ $product->unit }} manufactured
+                            </span>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <x-toggle-switch :action="route('products.toggle', $product)" :active="$product->is_active" />
+                                <a href="{{ route('products.edit', $product) }}"
+                                   class="p-2 rounded-control text-outline hover:text-forest-700 hover:bg-forest-50 transition" title="Edit">
+                                    <i data-lucide="pencil" class="h-4 w-4"></i>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 mb-1">
+                            <h3 class="font-serif text-xl font-semibold text-ink">{{ $product->name }}</h3>
+                            @if(!$product->is_active)
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-clay-container text-clay">Inactive</span>
+                            @endif
+                        </div>
+                        <p class="text-xs text-outline mb-4">Sells at {{ $settings->currency }} {{ number_format($product->selling_price, 0) }}/{{ $product->unit }}</p>
+
+                        <div class="flex flex-wrap gap-2 mb-5">
+                            <span class="inline-flex items-center gap-1.5 rounded-control bg-surface-container-low border border-outline-variant px-3 py-1.5 text-xs text-ink-variant">
+                                <i data-lucide="ruler" class="h-3.5 w-3.5"></i> {{ $product->unit }}
+                            </span>
+                            <span class="inline-flex items-center gap-1.5 rounded-control bg-surface-container-low border border-outline-variant px-3 py-1.5 text-xs text-ink-variant">
+                                <i data-lucide="boxes" class="h-3.5 w-3.5"></i> {{ number_format($product->stock_qty, 1) }} {{ $product->unit }} in stock
+                            </span>
+                            <span class="inline-flex items-center gap-1.5 rounded-control bg-surface-container-low border border-outline-variant px-3 py-1.5 text-xs text-ink-variant">
+                                <i data-lucide="flask-conical" class="h-3.5 w-3.5"></i> {{ number_format($product->output_qty_per_batch, 1) }} {{ $product->unit }} / batch
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="px-6 grid grid-cols-2 gap-3 mb-5">
+                        <div class="rounded-control bg-surface-container-low border border-outline-variant p-4">
+                            <p class="text-[11px] font-semibold text-outline uppercase tracking-wide mb-1">Batch Cost</p>
+                            <p class="font-serif text-xl font-semibold text-ink tabular">{{ $settings->currency }} <span x-text="batchCost.toFixed(0)"></span></p>
+                        </div>
+                        <div class="rounded-control bg-forest-50 border border-forest-300/30 p-4">
+                            <p class="text-[11px] font-semibold text-forest-700 uppercase tracking-wide mb-1">Live Cost / Unit</p>
+                            <p class="font-serif text-xl font-semibold text-forest-700 tabular">{{ $settings->currency }} <span x-text="costPerUnit.toFixed(2)"></span></p>
+                        </div>
+                    </div>
+
+                    <div class="px-6 mb-5">
+                        <p class="text-[11px] font-semibold text-outline uppercase tracking-wide mb-2">Required Raw Materials</p>
+                        @if($recipe->isEmpty())
+                            <p class="text-sm text-outline italic">No recipe configured yet — <a href="{{ route('products.edit', $product) }}" class="text-forest-700 font-medium">add raw materials</a>.</p>
+                        @else
+                            <ul class="space-y-2">
+                                <template x-for="r in recipe" :key="r.id">
+                                    <li class="flex items-center justify-between text-sm rounded-control px-3 py-2"
+                                        :class="(r.qty * multiplier) > r.available ? 'bg-clay-container' : 'bg-surface-container-low'">
+                                        <span class="text-ink font-medium" x-text="r.name"></span>
+                                        <span class="text-ink-variant">
+                                            <span x-text="(r.qty * multiplier).toFixed(2)"></span> <span x-text="r.unit"></span>
+                                            <span class="text-outline mx-1">/</span>
+                                            <span :class="(r.qty * multiplier) > r.available ? 'text-clay font-semibold' : 'text-outline'" x-text="r.available.toFixed(1) + ' avail.'"></span>
+                                        </span>
+                                    </li>
+                                </template>
+                            </ul>
+                        @endif
+                    </div>
+
+                    @if($product->is_active)
+                        <form method="POST" action="{{ route('batches.store', $product) }}" class="px-6 pb-6 mt-auto pt-2 border-t border-outline-variant">
+                            @csrf
+                            <div class="flex items-center gap-3 pt-4">
+                                <div class="flex-1">
+                                    <label class="block text-[11px] font-semibold text-outline uppercase tracking-wide mb-1.5">Batch Multiplier</label>
+                                    <input type="number" step="0.1" min="0.1" name="multiplier" x-model.number="multiplier"
+                                           class="w-full rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+                                </div>
+                                <div class="flex-1 text-right">
+                                    <p class="text-[11px] font-semibold text-outline uppercase tracking-wide mb-1.5">Output</p>
+                                    <p class="font-semibold text-ink tabular"><span x-text="outputQty.toFixed(1)"></span> {{ $product->unit }}</p>
+                                </div>
+                            </div>
+                            <button type="submit" :disabled="!canRun"
+                                    class="w-full mt-4 inline-flex items-center justify-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 disabled:bg-outline-variant disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-3 shadow-bento-sm transition">
+                                <i data-lucide="play-circle" class="h-4 w-4"></i> Run Batch Production
+                            </button>
+                            <p x-show="!canRun" class="text-xs text-clay mt-2 text-center">Not enough raw material stock for this multiplier.</p>
+                        </form>
+                    @else
+                        <div class="px-6 pb-6 mt-auto pt-4 border-t border-outline-variant">
+                            <p class="text-xs text-outline text-center">This product is inactive — turn it back on above to run a production batch.</p>
+                        </div>
+                    @endif
+                </div>
+            @empty
+                <p class="text-sm text-outline col-span-full text-center py-4">No products yet. Make your first product from raw materials.</p>
+            @endforelse
+        </div>
+
+        @if($products->hasPages())
+            <div class="pt-2">{{ $products->links() }}</div>
+        @endif
+    </div>
+
+    {{-- ==================== RECENT BATCHES ==================== --}}
+    <div class="bg-white rounded-bento border border-outline-variant shadow-bento overflow-hidden mt-14">
+        <div class="p-6 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <h3 class="font-serif text-lg font-semibold text-ink">Recent Batches</h3>
+        </div>
+
+        <div class="px-6 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-outline-variant">
+            <form method="GET" class="flex flex-col sm:flex-row gap-3 w-full sm:max-w-lg">
+                <input type="hidden" name="search" value="{{ request('search') }}">
+                <input type="date" name="batch_from" value="{{ request('batch_from') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+                <input type="date" name="batch_to" value="{{ request('batch_to') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+                <button type="submit" class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition">
+                    <i data-lucide="filter" class="h-4 w-4"></i> Filter
+                </button>
+            </form>
+            <a href="{{ route('batches.exportCsv', ['from' => request('batch_from'), 'to' => request('batch_to')]) }}"
+               class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
+                <i data-lucide="download" class="h-4 w-4"></i> Download CSV
+            </a>
+        </div>
+
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="text-left text-outline text-[11px] uppercase tracking-wider border-b border-outline-variant">
+                    <tr class="text-left text-outline text-[11px] uppercase tracking-wider border-y border-outline-variant">
                         <th class="px-6 py-3 font-semibold">Product</th>
-                        <th class="px-6 py-3 font-semibold">Unit</th>
-                        <th class="px-6 py-3 font-semibold">Selling Price</th>
-                        <th class="px-6 py-3 font-semibold">Recipe Yield</th>
-                        <th class="px-6 py-3 font-semibold">Stock</th>
-                        <th class="px-6 py-3 font-semibold">Status</th>
-                        <th class="px-6 py-3 font-semibold text-right">Actions</th>
+                        <th class="px-6 py-3 font-semibold">Multiplier</th>
+                        <th class="px-6 py-3 font-semibold">Output</th>
+                        <th class="px-6 py-3 font-semibold">Batch Cost</th>
+                        <th class="px-6 py-3 font-semibold">Cost / Unit</th>
+                        <th class="px-6 py-3 font-semibold">Date</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-outline-variant/60">
-                    @forelse($products as $product)
+                    @forelse($batchHistory as $batch)
                         <tr class="hover:bg-surface-container-low transition">
-                            <td class="px-6 py-4">
-                                <div class="flex items-center gap-3">
-                                    <span class="h-9 w-9 rounded-control bg-forest-50 flex items-center justify-center shrink-0">
-                                        <i data-lucide="package" class="h-4.5 w-4.5 text-forest-700" style="width:18px;height:18px"></i>
-                                    </span>
-                                    <p class="font-semibold text-ink">{{ $product->name }}</p>
-                                </div>
-                            </td>
-                            <td class="px-6 py-4 text-ink-variant">{{ $product->unit }}</td>
-                            <td class="px-6 py-4 tabular font-semibold text-ink">{{ $settings->currency }} {{ number_format($product->selling_price, 0) }}</td>
-                            <td class="px-6 py-4 text-ink-variant">{{ number_format($product->output_qty_per_batch, 1) }} {{ $product->unit }} / batch</td>
-                            <td class="px-6 py-4 tabular text-ink-variant">{{ number_format($product->stock_qty, 1) }} {{ $product->unit }}</td>
-                            <td class="px-6 py-4"><x-status-badge :status="$product->is_active ? 'active' : 'inactive'" /></td>
-                            <td class="px-6 py-4">
-                                <div class="flex items-center justify-end gap-1">
-                                    <a href="{{ route('products.edit', $product) }}" class="p-2 rounded-control text-outline hover:text-forest-700 hover:bg-forest-50 transition"><i data-lucide="pencil" class="h-4 w-4"></i></a>
-                                    <form method="POST" action="{{ route('products.destroy', $product) }}" onsubmit="return confirm('Delete this product?')">
-                                        @csrf @method('DELETE')
-                                        <button class="p-2 rounded-control text-outline hover:text-clay hover:bg-clay-container transition"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
-                                    </form>
-                                </div>
-                            </td>
+                            <td class="px-6 py-3 font-medium text-ink">{{ $batch->product->name ?? 'Deleted product' }}</td>
+                            <td class="px-6 py-3 text-outline">{{ $batch->multiplier }}x</td>
+                            <td class="px-6 py-3 text-ink-variant tabular">{{ number_format($batch->output_qty, 1) }}</td>
+                            <td class="px-6 py-3 text-ink font-semibold tabular">{{ $settings->currency }} {{ number_format($batch->batch_cost, 0) }}</td>
+                            <td class="px-6 py-3 text-ink-variant tabular">{{ $settings->currency }} {{ number_format($batch->cost_per_unit, 2) }}</td>
+                            <td class="px-6 py-3 text-outline">{{ $settings->localize($batch->created_at)->format('M j, g:i A') }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-6 py-10 text-center text-outline">No products yet. Make your first product from raw materials.</td></tr>
+                        <tr><td colspan="6" class="px-6 py-8 text-center text-outline">No batches run yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
-        @if($products->hasPages())
-            <div class="px-6 py-4 border-t border-outline-variant">{{ $products->links() }}</div>
-        @endif
     </div>
 </div>
 @endsection

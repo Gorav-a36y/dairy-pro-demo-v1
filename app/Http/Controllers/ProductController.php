@@ -3,126 +3,140 @@
 namespace App\Http\Controllers;
 
 use App\Models\BatchProduction;
-use App\Models\Ingredient;
 use App\Models\Product;
+use App\Models\RawMaterial;
+use App\Models\Setting;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class ProductController extends Controller
 {
+    /**
+     * Products and Batch Production now live on one page: manage the
+     * product list (add/edit/activate) up top, run a production batch for
+     * any active product in the middle, and see recent batch history below.
+     */
     public function index(Request $request)
     {
-        $products = Product::with('ingredients')
+        $products = Product::with('rawMaterials')
             ->when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%"))
             ->latest()
             ->paginate(10)
             ->withQueryString();
 
-        return view('products.index', compact('products'));
+        // Active products with their recipe loaded — used by the "Run a
+        // Production Batch" cards further down the page.
+        $activeProducts = Product::with('rawMaterials')->where('is_active', true)->orderBy('name')->get();
+
+        $batchHistory = BatchProduction::with('product')
+            ->when(
+                !empty($request->get('batch_from')),
+                fn ($q) => $q->whereDate('created_at', '>=', $request->get('batch_from'))
+            )
+            ->when(
+                !empty($request->get('batch_to')),
+                fn ($q) => $q->whereDate('created_at', '<=', $request->get('batch_to'))
+            )
+            ->latest()
+            ->take(10)
+            ->get();
+
+        return view('products.index', compact('products', 'activeProducts', 'batchHistory'));
     }
 
     public function create()
     {
-        $ingredients = Ingredient::orderBy('name')->get();
+        $rawMaterials = RawMaterial::where('is_active', true)->orderBy('name')->get();
+        $settings = Setting::current();
+        $allProducts = Product::select('id', 'name')->orderBy('name')->get();
 
-        return view('products.create', compact('ingredients'));
+        return view('products.create', compact('rawMaterials', 'settings', 'allProducts'));
     }
 
     public function store(Request $request)
     {
         $data = $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => ['required', 'string', 'max:255', $this->uniqueNameRule()],
             'unit' => 'required|string|in:' . implode(',', Product::UNITS),
-            'selling_price' => 'required|numeric|min:0',
+            'selling_price' => 'required|numeric|min:0.01',
             'output_qty_per_batch' => 'required|numeric|min:0.01',
-            'ingredients' => 'required|array|min:1',
-            'ingredients.*.ingredient_id' => 'required|exists:ingredients,id',
-            'ingredients.*.quantity_required' => 'required|numeric|min:0.01',
+            'raw_materials' => 'required|array|min:1',
+            'raw_materials.*.raw_material_id' => 'nullable|exists:raw_materials,id',
+            'raw_materials.*.quantity_required' => 'nullable|numeric|min:0.01',
+            'is_active' => 'nullable|boolean',
         ]);
 
-        // Only keep rows where both fields were actually filled in.
-        $recipeRows = collect($data['ingredients'])->filter(
-            fn ($row) => ! empty($row['ingredient_id']) && ! empty($row['quantity_required'])
+        $data['name'] = trim($data['name']);   // ← add here
+
+        $recipeRows = collect($data['raw_materials'])->filter(
+            fn ($row) => !empty($row['raw_material_id']) && !empty($row['quantity_required'])
         )->values();
 
         if ($recipeRows->isEmpty()) {
             return back()->withInput()->with('error', 'Add at least one raw material to the recipe.');
         }
 
-        // Check raw material stock is sufficient to produce the initial batch right now.
-        foreach ($recipeRows as $row) {
-            $ingredient = Ingredient::find($row['ingredient_id']);
-            if ($ingredient && (float) $row['quantity_required'] > (float) $ingredient->stock_qty) {
-                return back()->withInput()->with('error', "Not enough {$ingredient->name} in stock. Needed: {$row['quantity_required']} {$ingredient->unit}, Available: {$ingredient->stock_qty} {$ingredient->unit}.");
-            }
-        }
-
-        $product = DB::transaction(function () use ($data, $recipeRows) {
+        $product = DB::transaction(function () use ($data, $recipeRows, $request) {
             $product = Product::create([
                 'name' => $data['name'],
                 'unit' => $data['unit'],
                 'selling_price' => $data['selling_price'],
                 'stock_qty' => 0,
                 'output_qty_per_batch' => $data['output_qty_per_batch'],
-                'is_active' => true,
+                'is_active' => $request->boolean('is_active', true),
             ]);
 
             $sync = [];
-            $productionCost = 0.0;
-
             foreach ($recipeRows as $row) {
-                $ingredient = Ingredient::findOrFail($row['ingredient_id']);
-                $qty = (float) $row['quantity_required'];
-
-                $sync[$ingredient->id] = ['quantity_required' => $qty];
-                $productionCost += $qty * (float) $ingredient->cost_per_unit;
-
-                $ingredient->decrement('stock_qty', $qty);
+                $sync[$row['raw_material_id']] = ['quantity_required' => (float) $row['quantity_required']];
             }
 
-            $product->ingredients()->sync($sync);
-
-            $outputQty = (float) $data['output_qty_per_batch'];
-            $costPerUnit = $outputQty > 0 ? round($productionCost / $outputQty, 2) : 0;
-
-            $product->update(['stock_qty' => $outputQty]);
-
-            BatchProduction::create([
-                'product_id' => $product->id,
-                'user_id' => Auth::id(),
-                'multiplier' => 1,
-                'output_qty' => $outputQty,
-                'batch_cost' => round($productionCost, 2),
-                'cost_per_unit' => $costPerUnit,
-                'status' => 'completed',
-                'notes' => 'Initial production at product creation',
-            ]);
+            $product->rawMaterials()->sync($sync);
 
             return $product;
         });
 
-        return redirect()->route('products.index')->with('success', "Product created — produced {$product->stock_qty} {$product->unit} of {$product->name}.");
+        return redirect()->route('products.index')->with('success', "Product \"{$product->name}\" created. Run your first batch from the Batch Production page.");
     }
 
     public function edit(Product $product)
     {
-        $product->load('ingredients');
-        $ingredients = Ingredient::orderBy('name')->get();
+        $product->load('rawMaterials');
 
-        return view('products.edit', compact('product', 'ingredients'));
+        $rawMaterials = RawMaterial::where('is_active', true)
+            ->orWhereIn('id', $product->rawMaterials->pluck('id'))
+            ->orderBy('name')
+            ->get();
+
+        $settings = Setting::current();
+        $allProducts = Product::select('id', 'name')->where('id', '!=', $product->id)->orderBy('name')->get();
+
+        return view('products.edit', compact('product', 'rawMaterials', 'settings', 'allProducts'));
     }
 
     public function update(Request $request, Product $product)
     {
         $data = $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => ['required', 'string', 'max:255', $this->uniqueNameRule($product->id)],
             'unit' => 'required|string|in:' . implode(',', Product::UNITS),
-            'selling_price' => 'required|numeric|min:0',
+            'selling_price' => 'required|numeric|min:0.01',
             'stock_qty' => 'nullable|numeric|min:0',
             'output_qty_per_batch' => 'required|numeric|min:0.01',
-            'ingredients' => 'array',
+            'raw_materials' => 'required|array|min:1',
+            'raw_materials.*.raw_material_id' => 'nullable|exists:raw_materials,id',
+            'raw_materials.*.quantity_required' => 'nullable|numeric|min:0.01',
+            'is_active' => 'nullable|boolean',
         ]);
+
+        $data['name'] = trim($data['name']);   // ← add here
+
+        $recipeRows = collect($data['raw_materials'])->filter(
+            fn ($row) => !empty($row['raw_material_id']) && !empty($row['quantity_required'])
+        )->values();
+
+        if ($recipeRows->isEmpty()) {
+            return back()->withInput()->with('error', 'Add at least one raw material to the recipe.');
+        }
 
         $product->update([
             'name' => $data['name'],
@@ -133,27 +147,46 @@ class ProductController extends Controller
             'is_active' => $request->boolean('is_active', true),
         ]);
 
-        $this->syncRecipe($product, $request->input('ingredients', []));
+        if ($request->has('raw_materials')) {
+            $this->syncRecipe($product, $request->input('raw_materials', []));
+        }
 
         return redirect()->route('products.index')->with('success', 'Product updated successfully.');
     }
 
-    public function destroy(Product $product)
+    public function toggleActive(Product $product)
     {
-        $product->delete();
+        $product->update(['is_active' => !$product->is_active]);
 
-        return back()->with('success', 'Product deleted.');
+        return back()->with('success', $product->is_active
+            ? "{$product->name} marked active."
+            : "{$product->name} marked inactive."
+        );
+    }
+
+    /** Case-insensitive "name is unique" rule, since a plain unique() rule is case-sensitive on SQLite. */
+    protected function uniqueNameRule(?int $ignoreId = null)
+    {
+        return function ($attribute, $value, $fail) use ($ignoreId) {
+            $exists = Product::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($value))])
+                ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
+                ->exists();
+            if ($exists) {
+                $fail('A product with this name already exists.');
+            }
+        };
     }
 
     protected function syncRecipe(Product $product, array $rows): void
     {
         $sync = [];
         foreach ($rows as $row) {
-            if (empty($row['ingredient_id']) || empty($row['quantity_required'])) {
+            if (empty($row['raw_material_id']) || empty($row['quantity_required'])) {
                 continue;
             }
-            $sync[$row['ingredient_id']] = ['quantity_required' => $row['quantity_required']];
+            $sync[$row['raw_material_id']] = ['quantity_required' => $row['quantity_required']];
         }
-        $product->ingredients()->sync($sync);
+
+        $product->rawMaterials()->sync($sync);
     }
 }

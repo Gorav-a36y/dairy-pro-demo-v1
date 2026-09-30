@@ -4,16 +4,56 @@
 
 @section('content')
 <form method="POST" action="{{ route('sales.store') }}"
+      x-ref="form"
+      @keydown.window.enter.prevent="submitSale($event.shiftKey ? 'save_print' : 'save')"
       x-data="{
         sellableItems: {{ $sellableItems->toJson() }},
         customers: {{ $customers->toJson() }},
+        paymentMethods: {{ $paymentMethods->map(fn($m) => ['code' => $m->code, 'name' => $m->name])->toJson() }},
         selectedCustomerId: '',
         customerQuery: '',
         customerOpen: false,
         items: [],
-        isPaid: true,
-        paymentMethod: 'cash',
+        paymentMethod: '{{ $paymentMethods->firstWhere('code', 'cash')?->code ?? optional($paymentMethods->first())->code }}',
+        amountReceived: 0,
+        amountTouched: false,
         productQuery: '',
+
+        get isKhata() { return this.paymentMethod === 'khata' },
+        get isPartialKhata() { return this.paymentMethod === 'partial_khata' },
+        get requiresCustomer() { return this.isKhata || this.isPartialKhata },
+        // Khata is always 0 and locked. Partial Khata and every other
+        // method (cash, card, transfer, ...) are editable — for non-khata
+        // methods the cashier can type more than the total and the
+        // difference is handed back as change.
+        get amountFieldEditable() { return !this.isKhata },
+        get isOverpayable() { return !this.isKhata && !this.isPartialKhata },
+
+        // Cash/other-method underpayment warnings — nudges the cashier
+        // toward the correct payment method instead of silently letting
+        // the submit button stay disabled with no explanation.
+        get isZeroPaidCash() { return this.isOverpayable && (parseFloat(this.amountReceived) || 0) <= 0 },
+        get isUnderpaidCash() { return this.isOverpayable && (parseFloat(this.amountReceived) || 0) > 0 && this.remaining > 0.009 },
+        get paymentMethodLabel() {
+            const m = this.paymentMethods.find(p => p.code === this.paymentMethod);
+            return m ? m.name : this.paymentMethod;
+        },
+
+        init() {
+            this.amountReceived = this.grandTotal;
+            this.$watch('grandTotal', (value) => {
+                // Only auto-follow the total while the cashier hasn't typed
+                // their own figure yet — once touched, their entry (e.g. a
+                // round cash amount tendered) is left alone.
+                if (this.isKhata) { this.amountReceived = 0; return; }
+                if (!this.amountTouched) this.amountReceived = value;
+            });
+            this.$watch('paymentMethod', () => {
+                this.amountTouched = false;
+                if (this.isKhata) this.amountReceived = 0;
+                else this.amountReceived = this.grandTotal;
+            });
+        },
 
         get selectedCustomer() { return this.customers.find(c => c.id === this.selectedCustomerId) || null },
         customerLabel() {
@@ -57,14 +97,32 @@
         get subtotal() { return this.items.reduce((s, i) => s + this.lineGross(i), 0) },
         get totalDiscount() { return this.items.reduce((s, i) => s + (parseFloat(i.discount) || 0), 0) },
         get grandTotal() { return Math.max(this.subtotal - this.totalDiscount, 0) },
+        get remaining() { return Math.max(this.grandTotal - (parseFloat(this.amountReceived) || 0), 0) },
+        get changeDue() { return this.isOverpayable ? Math.max((parseFloat(this.amountReceived) || 0) - this.grandTotal, 0) : 0 },
         get hasStockIssue() {
             return this.items.some(i => { const o = this.itemInfo(i.key); return o && (parseFloat(i.quantity) || 0) > o.stock; });
         },
         get hasEmptyCart() { return this.items.length === 0 },
+        get needsCustomerForKhata() { return this.requiresCustomer && !this.selectedCustomerId },
+        get amountExceedsTotal() { return this.isPartialKhata && (parseFloat(this.amountReceived) || 0) > this.grandTotal + 0.009 },
+        get partialKhataEqualsTotal() { return this.isPartialKhata && this.grandTotal > 0 && (parseFloat(this.amountReceived) || 0) >= this.grandTotal - 0.009 },
+        get unpaidNotAllowed() { return !this.requiresCustomer && this.remaining > 0.009 },
+        get canSubmit() { return !this.hasStockIssue && !this.hasEmptyCart && !this.needsCustomerForKhata && !this.amountExceedsTotal && !this.unpaidNotAllowed && !this.partialKhataEqualsTotal },
+
+        submitSale(action) {
+            if (!this.canSubmit) return;
+            // Write directly to the field instead of a reactive binding — Alpine's
+            // DOM updates are async, so setting a data property and submitting on
+            // the same line can submit before the hidden input actually changes.
+            this.$refs.actionField.value = action;
+            this.$nextTick(() => this.$refs.form.requestSubmit());
+        },
       }"
       class="grid grid-cols-1 lg:grid-cols-12 gap-6">
     @csrf
     <input type="hidden" name="sale_date" value="{{ now()->format('Y-m-d') }}">
+    <input type="hidden" name="action" x-ref="actionField" value="save">
+    <input type="hidden" name="amount_received" :value="Number(amountReceived || 0).toFixed(2)">
 
     {{-- LEFT: Product Catalog --}}
     <div class="lg:col-span-8 space-y-6">
@@ -75,8 +133,10 @@
                 <input type="text" x-model="productQuery" placeholder="Search products by name..."
                        class="w-full rounded-control border border-outline-variant bg-white pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
             </div>
-            <div class="hidden sm:block text-xs text-outline font-medium shrink-0">
-                {{ now()->format('M j, Y — g:i A') }}
+            <div class="hidden sm:flex items-center gap-1.5 text-xs text-outline font-medium shrink-0 tabular"
+                 x-data="liveClock('{{ $settings->timezone() }}')" x-init="start()">
+                <i data-lucide="clock" class="h-3.5 w-3.5"></i>
+                <span x-text="display">{{ $settings->localize(now())->format('M j, Y — g:i A') }}</span>
             </div>
         </div>
 
@@ -268,28 +328,60 @@
             <div class="space-y-4">
                 <div>
                     <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Payment Method</label>
-                    <select name="payment_method" x-model="paymentMethod" :disabled="!isPaid"
-                            class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700 disabled:bg-surface-container-low disabled:text-outline">
-                        <option value="cash" selected>Cash</option>
-                        <option value="easypaisa">Easypaisa</option>
-                        <option value="jazzcash">JazzCash</option>
+                    <select name="payment_method" x-model="paymentMethod"
+                            class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+                        @foreach($paymentMethods as $method)
+                            <option value="{{ $method->code }}">{{ $method->name }}</option>
+                        @endforeach
                     </select>
+                    <p x-show="isKhata" x-cloak class="text-[11px] text-outline mt-1">Fully unpaid — the whole amount goes onto the customer's khata.</p>
+                    <p x-show="isPartialKhata" x-cloak class="text-[11px] text-outline mt-1">Enter what's paid now — the rest goes onto the customer's khata.</p>
+                    <p x-show="partialKhataEqualsTotal" x-cloak class="text-[11px] text-clay font-semibold mt-1">Paid amount can't equal the total under Partial Khata — select Cash (or another method) if the full amount is being paid.</p>
+                    <p x-show="isOverpayable" x-cloak class="text-[11px] text-outline mt-1">Must cover at least the total — enter more than that to hand back change.</p>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-semibold text-ink-variant uppercase tracking-wide">Amount Received</label>
+                    </div>
+                    <div class="relative">
+                        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-outline">{{ $settings->currency }}</span>
+                        <input type="number" step="0.01" min="0" :max="isPartialKhata ? grandTotal : null"
+                               x-model.number="amountReceived"
+                               @input="amountTouched = true"
+                               :readonly="!amountFieldEditable"
+                               :class="!amountFieldEditable ? 'bg-surface-container-low text-outline cursor-not-allowed' : ''"
+                               class="w-full rounded-control border border-outline-variant bg-white pl-12 pr-4 py-3 text-sm tabular focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+                    </div>
+
+                    {{-- NEW: cash/other-method underpayment warnings --}}
+                    <p x-show="isZeroPaidCash" x-cloak class="text-xs text-clay font-semibold mt-1.5 flex items-center gap-1.5">
+                        <i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i>
+                        Amount received is 0 — choose <span class="underline">Khata</span> instead of <span x-text="paymentMethodLabel"></span>.
+                    </p>
+                    <p x-show="isUnderpaidCash" x-cloak class="text-xs text-clay font-semibold mt-1.5 flex items-center gap-1.5">
+                        <i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i>
+                        Amount received is less than the total — choose <span class="underline">Partial Khata</span> instead of <span x-text="paymentMethodLabel"></span>.
+                    </p>
                 </div>
 
                 <div class="p-3 rounded-control border transition-colors"
-                     :class="isPaid ? 'border-forest-700/20 bg-forest-50/50' : 'border-clay/20 bg-clay-container/30'">
-                    <label class="flex items-center gap-2.5 cursor-pointer">
-                        <input type="hidden" name="is_paid" :value="isPaid ? 1 : 0">
-                        <input type="checkbox" x-model="isPaid" checked
-                               class="h-4 w-4 rounded border-outline-variant text-forest-700 focus:ring-forest-700">
-                        <span class="text-sm font-medium" :class="isPaid ? 'text-forest-800' : 'text-clay'">Paid in full now</span>
-                    </label>
-                    <p x-show="!isPaid" x-cloak class="text-xs text-clay font-semibold mt-2 flex items-start gap-1.5">
-                        <i data-lucide="alert-triangle" class="h-3.5 w-3.5 mt-0.5 shrink-0"></i>
-                        This sale will go on <span x-text="selectedCustomer ? selectedCustomer.label + `'s` : 'the customer\'s'"></span> khata — nothing is collected today.
+                     :class="remaining <= 0.009 ? 'border-forest-700/20 bg-forest-50/50' : 'border-clay/20 bg-clay-container/30'">
+                    <p class="text-sm font-semibold flex items-center gap-2"
+                       :class="remaining <= 0.009 ? 'text-forest-800' : 'text-clay'">
+                        <i x-show="remaining <= 0.009" x-cloak data-lucide="check-circle" class="h-4 w-4"></i>
+                        <i x-show="remaining > 0.009" x-cloak data-lucide="alert-triangle" class="h-4 w-4"></i>
+                        <span x-text="remaining <= 0.009 ? 'Paid in full' : (requiresCustomer ? ('Going to khata: {{ $settings->currency }} ' + remaining.toFixed(0)) : 'Underpaid')"></span>
                     </p>
-                    <p x-show="!isPaid && !selectedCustomerId" x-cloak class="text-xs text-clay mt-1">
-                        Select a registered customer above — khata sales can't be Walk-in.
+                    <p x-show="remaining > 0.009 && selectedCustomerId && requiresCustomer" x-cloak class="text-xs text-clay mt-1.5">
+                        Remainder will be added to <span x-text="selectedCustomer ? selectedCustomer.label + `'s` : 'the customer\'s'"></span> khata.
+                    </p>
+                    <p x-show="requiresCustomer && !selectedCustomerId" x-cloak class="text-xs text-clay font-semibold mt-1.5">
+                        Select a registered customer above — Khata and Partial Khata sales can't be Walk-in.
+                    </p>
+                    <p x-show="changeDue > 0.009" x-cloak class="text-xs text-forest-800 font-semibold mt-1.5 flex items-center gap-1.5">
+                        <i data-lucide="hand-coins" class="h-3.5 w-3.5"></i>
+                        Change to return: <span x-text="'{{ $settings->currency }} ' + changeDue.toFixed(0)"></span>
                     </p>
                 </div>
             </div>
@@ -311,6 +403,14 @@
                     <span class="font-serif font-semibold text-ink">Grand Total</span>
                     <span class="font-serif text-xl font-semibold text-forest-700 tabular" x-text="'{{ $settings->currency }} ' + grandTotal.toFixed(0)"></span>
                 </div>
+                <div class="flex justify-between" x-show="remaining > 0.009" x-cloak>
+                    <span class="text-clay font-medium">To Khata</span>
+                    <span class="font-medium tabular text-clay" x-text="'{{ $settings->currency }} ' + remaining.toFixed(0)"></span>
+                </div>
+                <div class="flex justify-between" x-show="changeDue > 0.009" x-cloak>
+                    <span class="text-forest-800 font-medium">Change Due</span>
+                    <span class="font-medium tabular text-forest-800" x-text="'{{ $settings->currency }} ' + changeDue.toFixed(0)"></span>
+                </div>
             </div>
 
             <p x-show="hasStockIssue" x-cloak class="text-xs text-clay font-semibold mt-4 flex items-start gap-1.5">
@@ -318,11 +418,24 @@
                 One or more items exceed available stock — reduce quantities to continue.
             </p>
 
-            <button type="submit"
-                    :disabled="hasStockIssue || hasEmptyCart || (!isPaid && !selectedCustomerId)"
-                    class="w-full mt-6 inline-flex items-center justify-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 disabled:bg-outline-variant disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-3.5 shadow-bento-sm transition">
-                <i data-lucide="check-circle" class="h-4 w-4"></i> Complete Sale
-            </button>
+            <div class="grid grid-cols-1 gap-2 mt-6">
+                <button type="button"
+                        @click="submitSale('save')"
+                        :disabled="!canSubmit"
+                        class="w-full inline-flex items-center justify-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 disabled:bg-outline-variant disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-3.5 shadow-bento-sm transition">
+                    <i data-lucide="check-circle" class="h-4 w-4"></i>
+                    Save Sale
+                    <span class="text-[10px] font-normal opacity-70">(Enter)</span>
+                </button>
+                <button type="button"
+                        @click="submitSale('save_print')"
+                        :disabled="!canSubmit"
+                        class="w-full inline-flex items-center justify-center gap-2 rounded-control bg-white border border-forest-700 hover:bg-forest-50 disabled:bg-surface-container-low disabled:border-outline-variant disabled:text-outline disabled:cursor-not-allowed text-forest-700 text-sm font-semibold px-5 py-3.5 transition">
+                    <i data-lucide="printer" class="h-4 w-4"></i>
+                    Save &amp; Print
+                    <span class="text-[10px] font-normal opacity-70">(Shift+Enter)</span>
+                </button>
+            </div>
         </div>
     </div>
 </form>

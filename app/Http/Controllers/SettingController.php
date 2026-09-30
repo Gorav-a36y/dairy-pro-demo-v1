@@ -10,8 +10,9 @@ class SettingController extends Controller
     public function edit()
     {
         $setting = Setting::current();
+        $paymentMethods = \App\Models\PaymentMethod::ordered()->get();
 
-        return view('settings.edit', compact('setting'));
+        return view('settings.edit', compact('setting', 'paymentMethods'));
     }
 
     public function update(Request $request)

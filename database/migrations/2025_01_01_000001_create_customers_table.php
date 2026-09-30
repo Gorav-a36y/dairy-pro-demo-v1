@@ -14,9 +14,11 @@ return new class extends Migration
             $table->string('phone')->nullable();
             $table->string('email')->nullable();
             $table->text('address')->nullable();
+            // RECOMMENDATION: Remove this cached column if you always calculate from transactions
             $table->decimal('balance', 12, 2)->default(0);
             $table->boolean('is_daily_customer')->default(false);
-            $table->string('daily_item_type', 20)->nullable();   // 'product' or 'ingredient'
+            // FIXED: renamed 'ingredient' to 'raw_material'
+            $table->string('daily_item_type', 20)->nullable();   // 'product' or 'raw_material'
             $table->unsignedBigInteger('daily_item_id')->nullable();
             $table->decimal('daily_quantity', 12, 2)->nullable();
             $table->timestamps();

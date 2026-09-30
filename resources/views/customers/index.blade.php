@@ -4,14 +4,16 @@
 
 @section('content')
 <div class="space-y-6">
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <form method="GET" class="relative w-full sm:max-w-xs">
-            <i data-lucide="search" class="h-4 w-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-            <input type="text" name="search" value="{{ request('search') }}" placeholder="Search customers..."
-                   class="w-full rounded-control border border-outline-variant bg-white pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+    {{-- ==================== SEARCH + ADD ==================== --}}
+    <div class="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-4">
+        <form method="GET"
+            class="bg-white rounded-bento border border-outline-variant shadow-bento p-4 flex items-center gap-4 w-full sm:flex-1 min-w-0">
+            <x-search-bar name="search" placeholder="Search customers..."
+                        x-data @input.debounce.400ms="$event.target.form.requestSubmit()" />
         </form>
+
         <a href="{{ route('customers.create') }}"
-           class="inline-flex items-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 text-white text-sm font-semibold px-4 py-2.5 shadow-bento-sm transition">
+        class="shrink-0 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control bg-forest-700 hover:bg-forest-800 text-white text-sm font-semibold px-5 py-3 shadow-bento-sm transition">
             <i data-lucide="user-plus" class="h-4 w-4"></i> Add Customer
         </a>
     </div>
@@ -35,12 +37,8 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-1">
-                        <a href="{{ route('khata.index', ['tab' => 'customer', 'id' => $customer->id]) }}" class="p-1.5 rounded-control text-outline hover:text-forest-700 hover:bg-forest-50 transition" title="View Khata"><i data-lucide="book-text" class="h-3.5 w-3.5"></i></a>
-                        <a href="{{ route('customers.edit', $customer) }}" class="p-1.5 rounded-control text-outline hover:text-forest-700 hover:bg-forest-50 transition"><i data-lucide="pencil" class="h-3.5 w-3.5"></i></a>
-                        <form method="POST" action="{{ route('customers.destroy', $customer) }}" onsubmit="return confirm('Delete this customer?')">
-                            @csrf @method('DELETE')
-                            <button class="p-1.5 rounded-control text-outline hover:text-clay hover:bg-clay-container transition"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
-                        </form>
+                        <a href="{{ route('khata.index', ['tab' => 'customer', 'id' => $customer->id]) }}" class="p-2 rounded-control text-outline hover:text-forest-700 hover:bg-forest-50 transition" title="View Khata"><i data-lucide="book-text" class="h-4 w-4"></i></a>
+                        <a href="{{ route('customers.edit', $customer) }}" class="p-2 rounded-control text-outline hover:text-forest-700 hover:bg-forest-50 transition"><i data-lucide="pencil" class="h-4 w-4"></i></a>
                     </div>
                 </div>
                 @if($customer->address)

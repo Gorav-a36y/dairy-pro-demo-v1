@@ -2,5 +2,5 @@
 @section('title', 'Edit Raw Material')
 @section('page-title', 'Edit Raw Material')
 @section('content')
-@include('ingredients._form')
+@include('raw-materials._form')
 @endsection

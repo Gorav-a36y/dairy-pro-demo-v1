@@ -4,52 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@yield('title', 'Dashboard') — {{ $settings->dairy_name ?? 'DairyPro' }}</title>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
-
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'ui-sans-serif', 'system-ui'],
-                        serif: ['Playfair Display', 'ui-serif', 'Georgia'],
-                    },
-                    colors: {
-                        surface: '#fbf9f5',
-                        'surface-dim': '#dbdad6',
-                        'surface-container-lowest': '#ffffff',
-                        'surface-container-low': '#f5f3ef',
-                        'surface-container': '#efeeea',
-                        'surface-container-high': '#e9e8e4',
-                        ink: '#1b1c1a',
-                        'ink-variant': '#4a4a4a',
-                        outline: '#737973',
-                        'outline-variant': '#e5e4e0',
-                        forest: {
-                            50: '#eef4ef', 100: '#d0e9d4', 300: '#b4cdb8', 500: '#4d6453',
-                            700: '#1b3022', 800: '#0f2317', 900: '#061b0e',
-                        },
-                        clay: '#ba1a1a',
-                        'clay-container': '#ffdad6',
-                    },
-                    boxShadow: {
-                        bento: '0px 4px 20px rgba(27, 48, 34, 0.06)',
-                        'bento-sm': '0px 2px 10px rgba(27, 48, 34, 0.05)',
-                    },
-                    borderRadius: {
-                        bento: '1.5rem',
-                        control: '1rem',
-                    },
-                }
-            }
-        }
-    </script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     <style>
         body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; background: #fbf9f5; }
         h1, h2, h3, h4, .font-serif { font-family: 'Playfair Display', serif; }
@@ -93,6 +49,31 @@
                     this.query = '';
                 }
             }));
+
+            // Live, ticking clock pinned to the business's configured
+            // country/timezone (Settings → Invoice Timing / Region) — not
+            // the visitor's browser timezone and not a static server-render,
+            // so it keeps counting the seconds correctly however long the
+            // page (e.g. the POS screen) stays open.
+            // Usage: <span x-data="liveClock('Asia/Karachi')" x-init="start()" x-text="display"></span>
+            Alpine.data('liveClock', (tz = 'UTC') => ({
+                tz,
+                display: '',
+                start() {
+                    this.tick();
+                    setInterval(() => this.tick(), 1000);
+                },
+                tick() {
+                    const now = new Date();
+                    try {
+                        const datePart = now.toLocaleDateString('en-US', { timeZone: this.tz, month: 'short', day: 'numeric', year: 'numeric' });
+                        const timePart = now.toLocaleTimeString('en-US', { timeZone: this.tz, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+                        this.display = `${datePart} — ${timePart}`;
+                    } catch (e) {
+                        this.display = now.toLocaleString();
+                    }
+                },
+            }));
         });
     </script>
     @stack('head')
@@ -103,7 +84,7 @@
     {{-- Sidebar --}}
     <aside class="hidden lg:flex lg:flex-col w-64 shrink-0 bg-forest-900 text-forest-100 min-h-screen sticky top-0 print:hidden">
         <div class="h-16 flex items-center gap-2.5 px-6 border-b border-white/10">
-            <img src="{{ asset('images/dairy_pro_logo.png') }}" alt="DairyPro" class="h-8 w-8 rounded-lg object-cover"
+            <img src="{{ asset('dairy_pro_logo.png') }}" alt="DairyPro" class="h-8 w-8 rounded-lg object-cover"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
             <span class="h-8 w-8 rounded-lg bg-gradient-to-br from-forest-300 to-forest-500 items-center justify-center hidden">
                 <i data-lucide="milk" class="h-4 w-4 text-white"></i>
@@ -126,15 +107,21 @@
             <x-nav-link route="suppliers.index" icon="tractor" label="Suppliers / Farmers" />
 
             <p class="px-3 text-[11px] font-semibold uppercase tracking-wider text-forest-300/70 mt-6 mb-2">Production</p>
-            <x-nav-link route="batches.index" icon="flask-conical" label="Batch Production" />
             <x-nav-link route="products.index" icon="package" label="Products" />
-            <x-nav-link route="ingredients.index" icon="wheat" label="Raw Materials" />
+            <x-nav-link route="raw-materials.index" icon="wheat" label="Raw Materials" />
+            <x-nav-link route="waste.index" icon="trash-2" label="Waste Management" />
 
             <p class="px-3 text-[11px] font-semibold uppercase tracking-wider text-forest-300/70 mt-6 mb-2">Accounts</p>
             <x-nav-link route="khata.index" icon="book-text" label="Khata (Ledger)" />
+            <x-nav-link route="workers.index" icon="users" label="Workers" />
             <x-nav-link route="reports.index" icon="bar-chart-3" label="Reports" />
 
             <p class="px-3 text-[11px] font-semibold uppercase tracking-wider text-forest-300/70 mt-6 mb-2">Assistant</p>
+            <a href="{{ route('help.index') }}"
+            class="flex items-center gap-3 px-3 py-2.5 rounded-control text-sm font-medium transition
+            {{ request()->routeIs('help.index') ? 'bg-white/10 text-white' : 'text-forest-200 hover:bg-white/5 hover:text-white' }}">
+                <i data-lucide="help-circle" class="h-4 w-4"></i> Help & Guide
+            </a>
             <x-nav-link route="ai.index" icon="sparkles" label="AI Assistant" />
             <x-nav-link route="settings.edit" icon="settings" label="Settings" />
         </nav>
@@ -167,11 +154,17 @@
             <x-nav-link route="daily-round.index" icon="calendar-check" label="Daily Round" />
             <x-nav-link route="milk-collections.index" icon="truck" label="Milk Collection" />
             <x-nav-link route="suppliers.index" icon="tractor" label="Suppliers / Farmers" />
-            <x-nav-link route="batches.index" icon="flask-conical" label="Batch Production" />
             <x-nav-link route="products.index" icon="package" label="Products" />
-            <x-nav-link route="ingredients.index" icon="wheat" label="Raw Materials" />
+            <x-nav-link route="raw-materials.index" icon="wheat" label="Raw Materials" />
+            <x-nav-link route="waste.index" icon="trash-2" label="Waste Management" />
             <x-nav-link route="khata.index" icon="book-text" label="Khata (Ledger)" />
+            <x-nav-link route="workers.index" icon="users" label="Workers" />
             <x-nav-link route="reports.index" icon="bar-chart-3" label="Reports" />
+            <a href="{{ route('help.index') }}"
+            class="flex items-center gap-3 px-3 py-2.5 rounded-control text-sm font-medium transition
+            {{ request()->routeIs('help.index') ? 'bg-white/10 text-white' : 'text-forest-200 hover:bg-white/5 hover:text-white' }}">
+                <i data-lucide="help-circle" class="h-4 w-4"></i> Help & Guide
+            </a>
             <x-nav-link route="ai.index" icon="sparkles" label="AI Assistant" />
             <x-nav-link route="settings.edit" icon="settings" label="Settings" />
         </nav>
@@ -207,7 +200,7 @@
         </header>
 
         <main class="flex-1 p-4 lg:p-8 bg-surface">
-            @if (session('success'))
+            @if (session('success') && !request()->routeIs('sales.show'))
                 <div class="mb-6 flex items-center gap-3 rounded-bento border border-forest-300/40 bg-forest-50 px-4 py-3 text-sm text-forest-800">
                     <i data-lucide="check-circle-2" class="h-5 w-5 text-forest-700 shrink-0"></i>
                     {{ session('success') }}
@@ -240,7 +233,6 @@
     </div>
 </div>
 
-<script>document.addEventListener('DOMContentLoaded', () => lucide.createIcons());</script>
 @stack('scripts')
 </body>
 </html>

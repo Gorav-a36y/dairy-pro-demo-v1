@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use App\Models\CustomerTransaction;
-use App\Models\Ingredient;
+use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -36,9 +36,13 @@ class DailyRoundController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'deliveries' => 'required|array',
+            'deliveries' => 'nullable|array',
             'deliveries.*' => 'nullable|numeric|min:0',
         ]);
+
+        if (empty($data['deliveries'])) {
+            return back()->with('error', 'Select at least one customer to log.');
+        }
 
         $loggedCount = 0;
         $skipped = [];
@@ -82,7 +86,11 @@ class DailyRoundController extends Controller
                     'discount' => 0,
                     'total_amount' => $total,
                     'paid_amount' => 0,
-                    'payment_method' => 'cash',
+                    // A daily-round delivery is never paid at the door — it
+                    // always goes straight onto the customer's khata, so it
+                    // can't be tagged "cash" like a completed counter sale.
+                    'payment_method' => PaymentMethod::KHATA_CODE,
+                    'source' => Sale::SOURCE_DAILY_ROUND,
                     'payment_status' => 'unpaid',
                 ]);
 
@@ -119,5 +127,38 @@ class DailyRoundController extends Controller
         }
 
         return back()->with($loggedCount > 0 ? 'success' : 'error', $message);
+    }
+
+    public function history(Request $request)
+    {
+        $customers = Customer::where('is_daily_customer', true)->orderBy('name')->get();
+
+        $selectedCustomer = null;
+        $deliveries = collect();
+        $summary = null;
+
+        if ($request->filled('customer_id')) {
+            $selectedCustomer = Customer::find($request->customer_id);
+
+            if ($selectedCustomer) {
+                $deliveries = Sale::with('items')
+                    ->where('customer_id', $selectedCustomer->id)
+                    ->where('source', Sale::SOURCE_DAILY_ROUND)
+                    ->when($request->filled('from'), fn ($q) => $q->whereDate('sale_date', '>=', $request->from))
+                    ->when($request->filled('to'), fn ($q) => $q->whereDate('sale_date', '<=', $request->to))
+                    ->orderBy('sale_date')
+                    ->orderBy('id')
+                    ->get();
+
+                $summary = [
+                    'total_quantity' => $deliveries->flatMap(fn ($sale) => $sale->items)->sum('quantity'),
+                    'total_amount'   => $deliveries->sum('total_amount'),
+                    'total_paid'     => $deliveries->sum('paid_amount'),
+                    'balance'        => $deliveries->sum('total_amount') - $deliveries->sum('paid_amount'),
+                ];
+            }
+        }
+
+        return view('daily-round.history', compact('customers', 'selectedCustomer', 'deliveries', 'summary'));
     }
 }

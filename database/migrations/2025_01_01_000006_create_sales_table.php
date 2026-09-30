@@ -18,8 +18,10 @@ return new class extends Migration
             $table->decimal('discount', 12, 2)->default(0);
             $table->decimal('total_amount', 12, 2)->default(0);
             $table->decimal('paid_amount', 12, 2)->default(0);
-            $table->string('payment_method', 20)->default('cash'); // cash | easypaisa | jazzcash
-            $table->string('payment_status')->default('paid'); // paid | unpaid (khata)
+            $table->decimal('amount_tendered', 12, 2)->nullable();
+            $table->string('payment_method', 20)->default('cash');
+            $table->string('payment_status')->default('paid');
+            $table->string('source', 20)->default('pos');
             $table->timestamps();
         });
     }

@@ -2,7 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Customer;
+use App\Models\MilkCollection;
 use App\Models\Sale;
+use App\Models\Supplier;
+use App\Models\Worker;
+use App\Models\Waste;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -11,49 +16,172 @@ class ReportController extends Controller
 {
     public function index(Request $request)
     {
-        $from = $request->from ? Carbon::parse($request->from) : Carbon::today()->subDays(29);
-        $to = $request->to ? Carbon::parse($request->to) : Carbon::today();
+        /* ── Date range ── */
+        $from = $request->from ? Carbon::parse($request->from)->startOfDay() : Carbon::today()->startOfMonth();
+        $to   = $request->to   ? Carbon::parse($request->to)->endOfDay()   : Carbon::today()->endOfMonth();
 
-        $sales = Sale::whereBetween('sale_date', [$from, $to])->get();
-        $totalRevenue = $sales->sum('total_amount');
-        $totalOrders = $sales->count();
-        $avgOrderValue = $totalOrders ? round($totalRevenue / $totalOrders, 2) : 0;
+        /* ── Sales ── */
+        $sales = Sale::whereBetween('sale_date', [$from->format('Y-m-d'), $to->format('Y-m-d')])->get();
+        $totalRevenue   = (float) $sales->sum('total_amount');
+        $totalInvoices  = $sales->count();
+        $avgInvoiceValue = $totalInvoices ? round($totalRevenue / $totalInvoices, 2) : 0;
 
-        $dailyTrend = DB::table('sales')
-            ->select(DB::raw('DATE(sale_date) as day'), DB::raw('SUM(total_amount) as total'))
-            ->whereBetween('sale_date', [$from, $to])
+        $cashSales    = (float) $sales->where('payment_status', Sale::STATUS_PAID)->sum('total_amount');
+        $creditSales  = (float) $sales->where('payment_status', Sale::STATUS_UNPAID)->sum('total_amount');
+
+        /* ── Payment method breakdown ── */
+        $paymentMethods = $sales->groupBy('payment_method')
+            ->map(fn ($group) => (float) $group->sum('total_amount'))
+            ->sortDesc();
+
+        /* ── Daily revenue trend with invoice count ──
+           Built from every day in the range (not just days that have a sale
+           row) so the chart always has a full, visible x-axis — a month
+           with zero sales used to produce an empty labels array, which made
+           Chart.js render nothing at all instead of a flat/empty line. */
+        $salesByDay = DB::table('sales')
+            ->select(
+                DB::raw('DATE(sale_date) as day'),
+                DB::raw('SUM(total_amount) as total'),
+                DB::raw('COUNT(*) as invoices')
+            )
+            ->whereBetween('sale_date', [$from->format('Y-m-d'), $to->format('Y-m-d')])
+            ->groupBy('day')
+            ->get()
+            ->keyBy('day');
+
+        $dailyTrend = collect();
+        for ($cursor = $from->copy()->startOfDay(); $cursor->lte($to); $cursor->addDay()) {
+            $day = $cursor->format('Y-m-d');
+            $row = $salesByDay->get($day);
+
+            $dailyTrend->push((object) [
+                'day' => $day,
+                'total' => $row ? (float) $row->total : 0.0,
+                'invoices' => $row ? (int) $row->invoices : 0,
+            ]);
+        }
+
+        /* ── Milk Collections ── */
+        $milkCollections = MilkCollection::whereHas('rawMaterial', fn ($q) => $q->where('is_milk', true))
+            ->whereBetween('collected_at', [$from, $to])
+            ->get();
+        $totalMilkLiters = (float) $milkCollections->sum('quantity');
+        $avgFat          = $milkCollections->count() ? round((float) $milkCollections->avg('fat'), 2) : 0;
+        $avgSnf          = $milkCollections->count() ? round((float) $milkCollections->avg('snf'), 2) : 0;
+        $totalMilkCost   = (float) $milkCollections->sum('total_amount');
+        $totalMilkPaid   = (float) $milkCollections->sum('paid_amount');
+        $milkBalanceDue  = round($totalMilkCost - $totalMilkPaid, 2);
+
+        // ── Milk Waste ──
+        $milkWasted = (float) DB::table('wastes')
+            ->join('raw_materials', 'raw_materials.id', '=', 'wastes.item_id')
+            ->where('wastes.item_type', Waste::TYPE_RAW_MATERIAL)
+            ->where('raw_materials.is_milk', true)
+            ->whereBetween('wastes.wasted_at', [$from->format('Y-m-d'), $to->format('Y-m-d')])
+            ->sum('wastes.quantity');
+
+        $netMilk = round($totalMilkLiters - $milkWasted, 2);
+
+        /* ── Daily milk trend with averages per day ── */
+        $dailyMilk = DB::table('milk_collections')
+            ->join('raw_materials', 'raw_materials.id', '=', 'milk_collections.raw_material_id')
+            ->where('raw_materials.is_milk', true)
+            ->select(
+                DB::raw('DATE(milk_collections.collected_at) as day'),
+                DB::raw('SUM(milk_collections.quantity) as liters'),
+                DB::raw('SUM(milk_collections.total_amount) as cost'),
+                DB::raw('AVG(milk_collections.fat) as avg_fat'),
+                DB::raw('AVG(milk_collections.snf) as avg_snf')
+            )
+            ->whereBetween('milk_collections.collected_at', [$from, $to])
             ->groupBy('day')
             ->orderBy('day')
-            ->get();
+            ->get()
+            ->keyBy('day');
 
+        /* ── Gross Profit ── */
+        $grossProfit = round($totalRevenue - $totalMilkCost, 2);
+
+        /* ── Product Performance ── */
         $productPerformance = DB::table('sale_items')
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
-            ->whereBetween('sales.sale_date', [$from, $to])
-            ->select('sale_items.item_name as name', DB::raw('SUM(sale_items.quantity) as qty'), DB::raw('SUM(sale_items.subtotal) as revenue'))
+            ->whereBetween('sales.sale_date', [$from->format('Y-m-d'), $to->format('Y-m-d')])
+            ->select(
+                'sale_items.item_name as name',
+                DB::raw('SUM(sale_items.quantity) as qty'),
+                DB::raw('SUM(sale_items.subtotal) as revenue')
+            )
             ->groupBy('sale_items.item_name')
             ->orderByDesc('revenue')
+            ->limit(8)
             ->get();
 
+        /* ── Top Suppliers by milk volume ── */
+        $topSuppliers = DB::table('milk_collections')
+            ->join('suppliers', 'suppliers.id', '=', 'milk_collections.supplier_id')
+            ->join('raw_materials', 'raw_materials.id', '=', 'milk_collections.raw_material_id')
+            ->where('raw_materials.is_milk', true)
+            ->whereBetween('milk_collections.collected_at', [$from, $to])
+            ->select(
+                'suppliers.name',
+                DB::raw('SUM(milk_collections.quantity) as total_qty'),
+                DB::raw('SUM(milk_collections.total_amount) as total_cost'),
+                DB::raw('AVG(milk_collections.fat) as avg_fat')
+            )
+            ->groupBy('suppliers.id', 'suppliers.name')
+            ->orderByDesc('total_qty')
+            ->limit(5)
+            ->get();
+
+        /* ── Khata Health ── */
+        $totalCustomerOutstanding = (float) Customer::sum('balance');
+        $overdueCustomers = Customer::where('balance', '>', 0)
+            ->orderByDesc('balance')
+            ->limit(5)
+            ->get(['name', 'phone', 'balance']);
+
+        /* ── Supplier Health ── */
+        $totalSupplierOwed = (float) Supplier::sum('balance');
+        $overdueSuppliers = Supplier::where('balance', '>', 0)
+            ->orderByDesc('balance')
+            ->limit(5)
+            ->get(['name', 'balance']);
+
+        /* ── Workers: total monthly salary commitment for active staff ── */
+        $totalWorkersSalary = (float) Worker::where('is_active', true)->sum('monthly_salary');
+
         return view('reports.index', compact(
-            'from', 'to', 'totalRevenue', 'totalOrders', 'avgOrderValue', 'dailyTrend', 'productPerformance'
+            'from', 'to',
+            'totalRevenue', 'totalInvoices', 'avgInvoiceValue',
+            'cashSales', 'creditSales', 'paymentMethods',
+            'dailyTrend', 'dailyMilk',
+            'totalMilkLiters', 'avgFat', 'avgSnf',
+            'totalMilkCost', 'totalMilkPaid', 'milkBalanceDue',
+            'milkWasted', 'netMilk',
+            'grossProfit',
+            'productPerformance', 'topSuppliers',
+            'totalCustomerOutstanding', 'overdueCustomers',
+            'totalSupplierOwed', 'overdueSuppliers',
+            'totalWorkersSalary'
         ));
     }
 
-    /** Download a CSV of daily sales for the given date range (defaults to today). */
+    /** Download a CSV of daily sales for the given date range. */
     public function export(Request $request)
     {
         $from = $request->from ? Carbon::parse($request->from) : Carbon::today();
-        $to = $request->to ? Carbon::parse($request->to) : Carbon::today();
+        $to   = $request->to   ? Carbon::parse($request->to)   : Carbon::today();
 
         $sales = Sale::with('customer')
-            ->whereBetween('sale_date', [$from, $to])
+            ->whereBetween('sale_date', [$from->format('Y-m-d'), $to->format('Y-m-d')])
             ->orderBy('sale_date')
             ->get();
 
         $filename = 'sales-report-' . $from->format('Y-m-d') . '-to-' . $to->format('Y-m-d') . '.csv';
 
         $headers = [
-            'Content-Type' => 'text/csv',
+            'Content-Type'        => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"$filename\"",
         ];
 

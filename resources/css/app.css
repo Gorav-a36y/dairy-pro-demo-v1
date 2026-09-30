@@ -6,6 +6,44 @@
 @source '../**/*.js';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    /* Fonts */
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-serif: 'Playfair Display', ui-serif, Georgia, serif;
+
+    /* Surface */
+    --color-surface: #fbf9f5;
+    --color-surface-dim: #dbdad6;
+    --color-surface-container-lowest: #ffffff;
+    --color-surface-container-low: #f5f3ef;
+    --color-surface-container: #efeeea;
+    --color-surface-container-high: #e9e8e4;
+
+    /* Ink */
+    --color-ink: #1b1c1a;
+    --color-ink-variant: #4a4a4a;
+
+    /* Outline */
+    --color-outline: #737973;
+    --color-outline-variant: #e5e4e0;
+
+    /* Forest */
+    --color-forest-50: #eef4ef;
+    --color-forest-100: #d0e9d4;
+    --color-forest-300: #b4cdb8;
+    --color-forest-500: #4d6453;
+    --color-forest-700: #1b3022;
+    --color-forest-800: #0f2317;
+    --color-forest-900: #061b0e;
+
+    /* Clay */
+    --color-clay: #ba1a1a;
+    --color-clay-container: #ffdad6;
+
+    /* Border Radius */
+    --radius-bento: 1.5rem;
+    --radius-control: 1rem;
+
+    /* Shadows */
+    --shadow-bento: 0px 4px 20px rgba(27, 48, 34, 0.06);
+    --shadow-bento-sm: 0px 2px 10px rgba(27, 48, 34, 0.05);
 }

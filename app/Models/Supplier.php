@@ -6,11 +6,15 @@ use Illuminate\Database\Eloquent\Model;
 
 class Supplier extends Model
 {
-    protected $fillable = ['name', 'phone', 'address', 'opening_balance', 'is_active'];
+    protected $fillable = [
+        'name', 'phone', 'address', 'balance',
+    ];
 
     protected function casts(): array
     {
-        return ['opening_balance' => 'decimal:2', 'is_active' => 'boolean'];
+        return [
+            'balance' => 'decimal:2',
+        ];
     }
 
     public function milkCollections()
@@ -20,15 +24,17 @@ class Supplier extends Model
 
     public function transactions()
     {
-        return $this->hasMany(SupplierTransaction::class)->orderByDesc('transaction_date')->orderByDesc('id');
+        return $this->hasMany(SupplierTransaction::class)
+            ->orderByDesc('transaction_date')
+            ->orderByDesc('id');
     }
 
-    /** Amount the dairy currently owes this supplier. */
+    /** Live calculated balance (what we still owe this supplier). */
     public function currentBalance(): float
     {
-        $purchases = $this->transactions()->where('type', 'purchase')->sum('amount');
-        $payments = $this->transactions()->where('type', 'payment')->sum('amount');
+        $purchases = (float) $this->transactions()->where('type', SupplierTransaction::TYPE_PURCHASE)->sum('amount');
+        $payments  = (float) $this->transactions()->where('type', SupplierTransaction::TYPE_PAYMENT)->sum('amount');
 
-        return round((float) $this->opening_balance + (float) $purchases - (float) $payments, 2);
+        return round($purchases - $payments, 2);
     }
 }
