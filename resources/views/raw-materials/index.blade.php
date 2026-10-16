@@ -3,7 +3,7 @@
 @section('page-title', 'Raw Materials')
 
 @section('content')
-<div class="space-y-6">
+<div id="live-results" class="space-y-6">
     {{-- ==================== SEARCH + ADD ==================== --}}
     <div class="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-4">
         <form method="GET"
@@ -43,7 +43,7 @@
                             </td>
                             <td class="px-6 py-4 text-ink-variant">{{ $rawMaterial->unit }}</td>
                             <td class="px-6 py-4 tabular text-ink font-semibold">{{ $settings->currency }} {{ number_format($rawMaterial->selling_price, 2) }}</td>
-                            <td class="px-6 py-4 tabular text-ink-variant">{{ number_format($rawMaterial->stock_qty, 1) }} {{ $rawMaterial->unit }}</td>
+                            <td class="px-6 py-4 tabular text-ink-variant">{{ number_format($rawMaterial->stock_qty, 2) }} {{ $rawMaterial->unit }}</td>
                             <td class="px-6 py-4">
                                 @if($rawMaterial->is_active)
                                     <span class="inline-flex items-center gap-1.5 rounded-full bg-forest-50 text-forest-700 text-xs font-semibold px-2.5 py-1">

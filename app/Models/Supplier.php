@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Supplier extends Model
 {
     protected $fillable = [
-        'name', 'phone', 'address', 'balance',
+        'name', 'phone', 'balance',
     ];
 
     protected function casts(): array

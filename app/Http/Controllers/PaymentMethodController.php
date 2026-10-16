@@ -8,6 +8,9 @@ use Illuminate\Validation\Rule;
 
 class PaymentMethodController extends Controller
 {
+    /** payment_methods.code is a string(30) column. */
+    private const CODE_MAX_LENGTH = 30;
+
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -17,10 +20,19 @@ class PaymentMethodController extends Controller
             ],
         ]);
 
-        $code = str($data['name'])->slug('_')->toString();
+        // Slug the name, cut it to the column size, and drop a trailing "_".
+        $code = str($data['name'])
+            ->slug('_')
+            ->limit(self::CODE_MAX_LENGTH, '')
+            ->rtrim('_')
+            ->toString();
+
+        if ($code === '') {
+            return back()->withInput()->with('error', 'Please use a name with letters or numbers.');
+        }
 
         if (PaymentMethod::where('code', $code)->exists()) {
-            return back()->with('error', 'A payment method with that name already exists.');
+            return back()->withInput()->with('error', 'A payment method with that name already exists.');
         }
 
         PaymentMethod::create([

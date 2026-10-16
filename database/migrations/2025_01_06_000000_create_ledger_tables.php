@@ -15,6 +15,7 @@ return new class extends Migration
             $table->string('type', 20); // khata | payment
             $table->decimal('amount', 12, 2);
             $table->string('invoice_no')->nullable();
+            $table->uuid('submit_token')->nullable()->unique(); // one-time token: a payment can be saved only once
             $table->text('notes')->nullable();
             $table->date('transaction_date');
             $table->timestamps();
@@ -27,6 +28,7 @@ return new class extends Migration
             $table->string('type', 20); // purchase | payment
             $table->decimal('amount', 12, 2);
             $table->string('invoice_no')->nullable(); // added
+            $table->uuid('submit_token')->nullable()->unique(); // one-time token: a payment can be saved only once
             $table->string('reference')->nullable();
             $table->text('notes')->nullable();
             $table->date('transaction_date');

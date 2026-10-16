@@ -11,7 +11,6 @@ use App\Models\Product;
 use App\Models\RawMaterial;
 use App\Models\Sale;
 use App\Models\SaleItem;
-use App\Models\StockMovement;
 use App\Models\Supplier;
 use App\Models\SupplierTransaction;
 use App\Models\Waste;
@@ -97,23 +96,20 @@ class DummyDateRangeSeeder extends Seeder
 
     protected function seedSuppliers()
     {
+        // Phones are already in the standard 03XXXXXXXXX form (see App\Support\PhoneNumber).
         $names = ['Ahmed Dairy Farm', 'Green Valley Suppliers', 'Al-Noor Milk Co.', 'Sindh Farms', 'City Traders'];
-        return collect($names)->map(fn ($name, $i) => Supplier::firstOrCreate(
+        return collect($names)->map(fn ($name) => Supplier::firstOrCreate(
             ['name' => $name],
-            ['phone' => '030'.rand(10000000, 99999999), 'address' => 'Test Address '.($i + 1)]
+            ['phone' => '030'.rand(10000000, 99999999)]
         ));
     }
 
     protected function seedCustomers()
     {
         $names = ['Bilal Store', 'Fatima General Store', 'Karim Hotel', 'Sana Bakery', 'Zubair Mart'];
-        return collect($names)->map(fn ($name, $i) => Customer::firstOrCreate(
+        return collect($names)->map(fn ($name) => Customer::firstOrCreate(
             ['name' => $name],
-            [
-                'phone' => '031'.rand(10000000, 99999999),
-                'email' => null,
-                'address' => 'Test Customer Address '.($i + 1),
-            ]
+            ['phone' => '031'.rand(10000000, 99999999)]
         ));
     }
 
@@ -181,7 +177,7 @@ class DummyDateRangeSeeder extends Seeder
                 ? round($totalAmount * (rand(30, 70) / 100), 2) // partial khata
                 : 0);                    // fully on khata
 
-        MilkCollection::create([
+        $collection = MilkCollection::create([
             'supplier_id' => $supplier->id,
             'raw_material_id' => $rawMaterial->id,
             'quantity' => $qty,
@@ -205,6 +201,7 @@ class DummyDateRangeSeeder extends Seeder
         if ($remaining > 0) {
             SupplierTransaction::create([
                 'supplier_id' => $supplier->id,
+                'milk_collection_id' => $collection->id,
                 'type' => SupplierTransaction::TYPE_PURCHASE,
                 'amount' => $remaining,
                 'reference' => 'Seeded Milk Collection',
@@ -233,9 +230,8 @@ class DummyDateRangeSeeder extends Seeder
             'discount' => 0,
             'total_amount' => $total,
             'paid_amount' => $isKhata ? 0 : $total,
-            'amount_tendered' => $isKhata ? null : $total,
+            'amount_received' => $isKhata ? null : $total,
             'payment_method' => $isKhata ? 'khata' : 'cash',
-            'payment_status' => $isKhata ? 'unpaid' : 'paid',
             'source' => 'pos',
         ]);
 
@@ -254,6 +250,7 @@ class DummyDateRangeSeeder extends Seeder
         if ($isKhata) {
             CustomerTransaction::create([
                 'customer_id' => $customer->id,
+                'sale_id' => $sale->id,
                 'type' => CustomerTransaction::TYPE_KHATA,
                 'amount' => $total,
                 'invoice_no' => $sale->invoice_no,
@@ -328,35 +325,17 @@ class DummyDateRangeSeeder extends Seeder
         $product = $products->random();
         $multiplier = rand(1, 3);
         $outputQty = round($product->output_qty_per_batch * $multiplier, 2);
-        $batchCost = round(rand(500, 2000) * $multiplier, 2);
-        $costPerUnit = $outputQty > 0 ? round($batchCost / $outputQty, 2) : 0;
 
         $batch = new BatchProduction([
             'product_id' => $product->id,
             'user_id' => null,
             'multiplier' => $multiplier,
             'output_qty' => $outputQty,
-            'batch_cost' => $batchCost,
-            'cost_per_unit' => $costPerUnit,
-            'status' => 'completed',
-            'notes' => 'Seeded test batch',
         ]);
         $batch->timestamps = false;
         $batch->created_at = $this->randomTimeOn($day);
         $batch->updated_at = $batch->created_at;
         $batch->save();
-
-        $movement = new StockMovement([
-            'item_type' => 'product',
-            'item_id' => $product->id,
-            'direction' => 'in',
-            'quantity' => $outputQty,
-            'reason' => 'Seeded batch production output',
-        ]);
-        $movement->timestamps = false;
-        $movement->created_at = $batch->created_at;
-        $movement->updated_at = $batch->created_at;
-        $movement->save();
     }
 
     protected function printSummary(array $counts): void

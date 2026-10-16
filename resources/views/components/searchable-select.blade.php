@@ -11,8 +11,24 @@
     @if($label)
         <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">{{ $label }}</label>
     @endif
-    <input type="hidden" name="{{ $name }}" :value="selectedId" @if($required) required @endif>
+
+    @unless($required)
+        {{-- Optional field: a plain hidden input is enough --}}
+        <input type="hidden" name="{{ $name }}" :value="selectedId">
+    @endunless
+
     <div class="relative">
+        @if($required)
+            {{-- Required field: browsers skip "required" on type="hidden" inputs.
+                 This invisible text input holds the selected ID, so the browser
+                 can block the submit and show "Please fill out this field".
+                 Inline style is used on purpose (works without rebuilding Tailwind).
+                 Do NOT add readonly/disabled here, they turn validation off. --}}
+            <input type="text" name="{{ $name }}" :value="selectedId" required
+                   tabindex="-1" autocomplete="off" aria-hidden="true"
+                   style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;pointer-events:none;border:0;padding:0;margin:0;">
+        @endif
+
         <i data-lucide="search" class="h-4 w-4 text-outline absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
         <input type="text"
                autocomplete="off"

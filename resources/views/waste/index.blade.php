@@ -3,7 +3,7 @@
 @section('page-title', 'Waste Management')
 
 @section('content')
-<div class="space-y-6" x-data="{ showForm: false }">
+<div class="space-y-6" x-data="{ showForm: {{ $errors->any() ? 'true' : 'false' }} }">
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="bg-white rounded-bento border border-outline-variant shadow-bento p-5">
@@ -37,7 +37,7 @@
 
     <div x-show="showForm" x-cloak x-transition
          x-data="{
-            quantity: '',
+            quantity: @js(old('quantity', '')),
             stock: null,
             unit: '',
             typeLabel: '',
@@ -70,15 +70,17 @@
 
             <div>
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Date</label>
-                <div class="w-full rounded-control border border-outline-variant bg-surface-container-low px-4 py-3 text-sm font-semibold text-ink">
-                    {{ now()->format('M j, Y') }} <span class="text-outline font-normal">(automatic)</span>
-                </div>
+                <input type="date" name="wasted_at" required
+                       value="{{ old('wasted_at', now()->toDateString()) }}"
+                       max="{{ now()->toDateString() }}"
+                       class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+                <p class="text-[11px] text-outline mt-1">Today by default. A future date is not allowed.</p>
             </div>
 
             <div class="sm:col-span-2 lg:col-span-3">
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Reason / Note (optional)</label>
                 <textarea name="note" rows="2" placeholder="e.g. spoiled, expired, spilled during production"
-                    class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700"></textarea>
+                    class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">{{ old('note') }}</textarea>
             </div>
 
             <div class="sm:col-span-2 lg:col-span-3">
@@ -92,14 +94,14 @@
 
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <form method="GET" class="flex flex-col sm:flex-row gap-3 w-full sm:max-w-lg">
-            <input type="date" name="from" value="{{ request('from') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
-            <input type="date" name="to" value="{{ request('to') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
-            <button type="submit" class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition">
+            <input type="date" name="from" value="{{ request('from') }}" class="rounded-control border border-outline-variant bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+            <input type="date" name="to" value="{{ request('to') }}" class="rounded-control border border-outline-variant bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+            <button type="submit" class="inline-flex items-center gap-2 rounded-control border border-outline-variant bg-white text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition">
                 <i data-lucide="filter" class="h-4 w-4"></i> Filter
             </button>
         </form>
         <a href="{{ route('waste.exportCsv', ['from' => request('from'), 'to' => request('to')]) }}"
-           class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
+           class="inline-flex items-center gap-2 rounded-control border border-outline-variant bg-white text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
             <i data-lucide="download" class="h-4 w-4"></i> Download CSV
         </a>
     </div>

@@ -11,12 +11,22 @@
         'cost' => (float) $rm->selling_price,
     ]);
 
-    $existingRows = $isEdit
-        ? $product->rawMaterials->map(fn($rm) => [
-            'raw_material_id' => $rm->id,
+    // After a failed validation, bring back exactly the rows the user typed;
+    // otherwise use the saved recipe (edit) or start empty (create).
+    $oldRecipe = old('raw_materials');
+    if (is_array($oldRecipe)) {
+        $existingRows = collect($oldRecipe)->map(fn($r) => [
+            'raw_material_id' => (string) ($r['raw_material_id'] ?? ''),
+            'quantity_required' => $r['quantity_required'] ?? '',
+        ])->values();
+    } elseif ($isEdit) {
+        $existingRows = $product->rawMaterials->map(fn($rm) => [
+            'raw_material_id' => (string) $rm->id,
             'quantity_required' => (float) $rm->pivot->quantity_required,
-        ])->values()
-        : collect();
+        ])->values();
+    } else {
+        $existingRows = collect();
+    }
 
     $editRouteTemplate = route('products.edit', ['product' => '___ID___']);
 @endphp
@@ -29,8 +39,6 @@
         outputQty: {{ json_encode(old('output_qty_per_batch', $isEdit ? (float) $product->output_qty_per_batch : '')) }},
         rawMaterialInfo(id) { return this.rawMaterialOptions.find(rm => rm.id == id) },
         lineCost(row) { const rm = this.rawMaterialInfo(row.raw_material_id); return rm ? (parseFloat(row.quantity_required)||0) * rm.cost : 0 },
-        get productionCost() { return this.rows.reduce((s, r) => s + this.lineCost(r), 0) },
-        get costPerUnit() { const out = parseFloat(this.outputQty) || 0; return out > 0 ? this.productionCost / out : 0 },
 
         name: {{ json_encode(old('name', $product->name ?? '')) }},
         allProducts: {{ json_encode($allProducts ?? []) }},
@@ -97,11 +105,19 @@
             </div>
             <div>
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Unit</label>
-                <select name="unit" required class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
-                    @foreach(\App\Models\Product::UNITS as $u)
-                        <option value="{{ $u }}" @selected(old('unit', $product->unit ?? 'Kilogram') == $u)>{{ $u }}</option>
-                    @endforeach
-                </select>
+                @if($isEdit)
+                    {{-- Unit is locked after creation. No name attribute, so it is never submitted;
+                         the controller also ignores any unit sent to update(). --}}
+                    <input type="text" value="{{ $product->unit }}" disabled
+                           class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm bg-surface-container-low text-outline cursor-not-allowed">
+                    <p class="text-[11px] text-outline mt-1">Unit cannot be changed after the product is created.</p>
+                @else
+                    <select name="unit" required class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+                        @foreach(\App\Models\Product::UNITS as $u)
+                            <option value="{{ $u }}" @selected(old('unit', 'Kilogram') == $u)>{{ $u }}</option>
+                        @endforeach
+                    </select>
+                @endif
             </div>
             <div>
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Selling Price ({{ $settings->currency ?? 'Rs.' }})</label>
@@ -113,7 +129,7 @@
             @if($isEdit)
                 <div>
                     <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Current Stock Qty</label>
-                    <input type="number" step="0.01" name="stock_qty" value="{{ old('stock_qty', $product->stock_qty) }}" disabled
+                    <input type="number" step="0.01" value="{{ $product->stock_qty }}" disabled
                            class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm bg-surface-container-low text-outline cursor-not-allowed">
                     <p class="text-[11px] text-outline mt-1">To add more stock, use the Batch Production page instead of editing this directly.</p>
                 </div>
@@ -152,7 +168,7 @@
             <template x-for="(row, index) in rows" :key="index">
                 <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
                     <div class="sm:col-span-5">
-                        <select :name="`raw_materials[${index}][raw_material_id]`" x-model="row.raw_material_id"
+                        <select :name="`raw_materials[${index}][raw_material_id]`" x-model="row.raw_material_id" required
                                 class="w-full rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
                             <option value="">Select raw material...</option>
                             @foreach($rawMaterials as $rawMaterial)
@@ -163,7 +179,8 @@
                         </select>
                     </div>
                     <div class="sm:col-span-2">
-                        <input type="number" step="0.01" :name="`raw_materials[${index}][quantity_required]`" x-model="row.quantity_required"
+                        <input type="number" step="0.01" min="0.01" required
+                               :name="`raw_materials[${index}][quantity_required]`" x-model="row.quantity_required"
                                placeholder="Qty per batch" class="w-full rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
                     </div>
                     <div class="sm:col-span-2">
@@ -175,7 +192,10 @@
                                class="w-full rounded-control border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm text-outline tabular cursor-not-allowed opacity-70">
                     </div>
                     <div class="sm:col-span-1 text-right">
-                        <button type="button" @click="rows.splice(index, 1)" class="p-2.5 rounded-control text-outline hover:text-clay hover:bg-clay-container transition">
+                        {{-- Remove button is hidden when only one row is left,
+                             so the recipe always has at least one raw material --}}
+                        <button type="button" x-show="rows.length > 1" @click="rows.splice(index, 1)"
+                                class="p-2.5 rounded-control text-outline hover:text-clay hover:bg-clay-container transition">
                             <i data-lucide="x" class="h-4 w-4"></i>
                         </button>
                     </div>
@@ -194,11 +214,6 @@
                 class="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-forest-700 hover:text-forest-800">
             <i data-lucide="plus-circle" class="h-4 w-4"></i> Add Raw Material Row
         </button>
-
-        <p class="text-sm text-outline mt-5 pt-5 border-t border-outline-variant">
-            Recipe cost at current raw material prices: <span class="font-semibold text-ink tabular">{{ $settings->currency ?? 'Rs.' }} <span x-text="productionCost.toFixed(2)"></span></span>
-            <span class="text-outline">(cost/unit: <span x-text="costPerUnit.toFixed(2)"></span>)</span>
-        </p>
     </div>
 
     <div class="flex items-center gap-3">

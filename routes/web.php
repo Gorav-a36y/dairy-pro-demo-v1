@@ -52,7 +52,7 @@ Route::middleware('auth')->group(function () {
         ->name('milk-collections.receipt');
 
     // FIXED: destroy() replaced with toggleActive() — excluded, toggle route added below
-    Route::resource('suppliers', SupplierController::class)->except(['show', 'destroy']);
+    Route::resource('suppliers', SupplierController::class)->only(['index', 'create', 'store']);
 
     // Production — Batch Production now lives on the Products page itself
     // (see ProductController::index); only the actions its forms/links call

@@ -3,6 +3,12 @@
 @section('page-title', 'Khata (Ledger)')
 
 @section('content')
+@php
+    // 1500 -> 1,500   1500.4 -> 1,500.40   (the paisa is never hidden)
+    $fmt = fn ($v) => abs((float) $v - round((float) $v)) < 0.005
+        ? number_format((float) $v, 0)
+        : number_format((float) $v, 2);
+@endphp
 <div class="space-y-6">
     {{-- Tabs --}}
     <div class="inline-flex rounded-control border border-outline-variant bg-white p-1">
@@ -56,7 +62,7 @@
                 @if($selectedCustomer)
                     @php
                         $balance = $selectedCustomer->balance;
-                        $isCleared = abs($balance) < 0.01;
+                        $isCleared = $balance < 0.01;
                     @endphp
 
                     <div class="bg-white rounded-bento border border-outline-variant shadow-bento p-6">
@@ -75,7 +81,7 @@
                                     @endif
                                 </div>
                                 <p class="text-2xl font-serif font-semibold tabular {{ $balance > 0 ? 'text-clay' : ($balance < 0 ? 'text-forest-700' : 'text-outline') }}">
-                                    {{ $settings->currency }} {{ number_format($balance, 0) }}
+                                    {{ $settings->currency }} {{ $fmt($balance) }}
                                 </p>
                             </div>
                         </div>
@@ -83,10 +89,10 @@
                         {{-- Payment form --}}
                         <div class="{{ $isCleared ? 'opacity-60 pointer-events-none select-none' : '' }} transition-opacity">
                             <form id="customer-payment-form" method="POST" action="{{ route('khata.customer.store') }}"
-                                  onkeydown="khataFormShortcut(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-5 border-t border-outline-variant">
+                                  onkeydown="khataFormShortcut(event)" onsubmit="khataOnSubmit(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-5 border-t border-outline-variant">
                                 @csrf
                                 <input type="hidden" name="customer_id" value="{{ $selectedCustomer->id }}">
-                                <input type="hidden" name="transaction_date" value="{{ now()->format('Y-m-d') }}">
+                                <input type="hidden" name="submit_token" value="{{ $submitToken }}">
 
                                 <div class="sm:col-span-1">
                                     <label class="block text-[11px] font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Amount Received</label>
@@ -132,14 +138,14 @@
                             <input type="hidden" name="tab" value="customer">
                             <input type="hidden" name="id" value="{{ $selectedCustomer->id }}">
                             <x-search-bar name="invoice" placeholder="Search invoice number..." icon="receipt" />
-                            <input type="date" name="from" value="{{ request('from') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
-                            <input type="date" name="to" value="{{ request('to') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
-                            <button type="submit" class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
+                            <input type="date" name="from" value="{{ request('from') }}" class="rounded-control border border-outline-variant bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+                            <input type="date" name="to" value="{{ request('to') }}" class="rounded-control border border-outline-variant bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+                            <button type="submit" class="inline-flex items-center gap-2 rounded-control border border-outline-variant bg-white text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
                                 <i data-lucide="filter" class="h-4 w-4"></i> Filter
                             </button>
                         </form>
                         <a href="{{ route('khata.exportCsv', ['tab' => 'customer', 'id' => $selectedCustomer->id, 'from' => request('from'), 'to' => request('to'), 'invoice' => request('invoice')]) }}"
-                           class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
+                           class="inline-flex items-center gap-2 rounded-control border border-outline-variant bg-white text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
                             <i data-lucide="download" class="h-4 w-4"></i> Download CSV
                         </a>
                     </div>
@@ -158,7 +164,7 @@
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-outline-variant/60">
-                                    @forelse($selectedCustomer->transactions->sortBy(['transaction_date', 'id'])->values() as $tx)
+                                    @forelse($selectedCustomer->transactions as $tx)
                                         <tr>
                                             <td class="px-5 py-3 text-outline whitespace-nowrap">{{ $tx->transaction_date->format('M j, Y') }}</td>
                                             <td class="px-5 py-3">
@@ -179,7 +185,7 @@
                                                 <p class="text-xs text-outline mt-0.5">{{ $tx->notes ?: '—' }}</p>
                                             </td>
                                             <td class="px-5 py-3 text-right tabular font-semibold {{ $tx->type === 'khata' ? 'text-clay' : 'text-forest-700' }}">
-                                                {{ $tx->type === 'khata' ? '+' : '-' }} {{ $settings->currency }} {{ number_format($tx->amount, 0) }}
+                                                {{ $tx->type === 'khata' ? '+' : '-' }} {{ $settings->currency }} {{ $fmt($tx->amount) }}
                                             </td>
                                             <td class="px-5 py-3 text-center">
                                                 @if($tx->type === 'khata' && $tx->sale_id)
@@ -243,7 +249,7 @@
                 @if($selectedSupplier)
                     @php
                         $balance = $selectedSupplier->balance;
-                        $isCleared = abs($balance) < 0.01;
+                        $isCleared = $balance < 0.01;
                     @endphp
 
                     <div class="bg-white rounded-bento border border-outline-variant shadow-bento p-6">
@@ -262,7 +268,7 @@
                                     @endif
                                 </div>
                                 <p class="text-2xl font-serif font-semibold tabular {{ $balance > 0 ? 'text-clay' : ($balance < 0 ? 'text-forest-700' : 'text-outline') }}">
-                                    {{ $settings->currency }} {{ number_format($balance, 0) }}
+                                    {{ $settings->currency }} {{ $fmt($balance) }}
                                 </p>
                             </div>
                         </div>
@@ -270,10 +276,10 @@
                         {{-- Payment form --}}
                         <div class="{{ $isCleared ? 'opacity-60 pointer-events-none select-none' : '' }} transition-opacity">
                             <form id="supplier-payment-form" method="POST" action="{{ route('khata.supplier.store') }}"
-                                  onkeydown="khataFormShortcut(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-5 border-t border-outline-variant">
+                                  onkeydown="khataFormShortcut(event)" onsubmit="khataOnSubmit(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-5 border-t border-outline-variant">
                                 @csrf
                                 <input type="hidden" name="supplier_id" value="{{ $selectedSupplier->id }}">
-                                <input type="hidden" name="transaction_date" value="{{ now()->format('Y-m-d') }}">
+                                <input type="hidden" name="submit_token" value="{{ $submitToken }}">
 
                                 <div class="sm:col-span-1">
                                     <label class="block text-[11px] font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Amount Paid</label>
@@ -319,14 +325,14 @@
                             <input type="hidden" name="tab" value="supplier">
                             <input type="hidden" name="id" value="{{ $selectedSupplier->id }}">
                             <x-search-bar name="invoice" placeholder="Search invoice number..." icon="receipt" />
-                            <input type="date" name="from" value="{{ request('from') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
-                            <input type="date" name="to" value="{{ request('to') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
-                            <button type="submit" class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
+                            <input type="date" name="from" value="{{ request('from') }}" class="rounded-control border border-outline-variant bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+                            <input type="date" name="to" value="{{ request('to') }}" class="rounded-control border border-outline-variant bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+                            <button type="submit" class="inline-flex items-center gap-2 rounded-control border border-outline-variant bg-white text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
                                 <i data-lucide="filter" class="h-4 w-4"></i> Filter
                             </button>
                         </form>
                         <a href="{{ route('khata.exportCsv', ['tab' => 'supplier', 'id' => $selectedSupplier->id, 'from' => request('from'), 'to' => request('to'), 'invoice' => request('invoice')]) }}"
-                           class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
+                           class="inline-flex items-center gap-2 rounded-control border border-outline-variant bg-white text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
                             <i data-lucide="download" class="h-4 w-4"></i> Download CSV
                         </a>
                     </div>
@@ -345,7 +351,7 @@
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-outline-variant/60">
-                                    @forelse($selectedSupplier->transactions->sortBy(['transaction_date', 'id'])->values() as $tx)
+                                    @forelse($selectedSupplier->transactions as $tx)
                                         <tr>
                                             <td class="px-5 py-3 text-outline whitespace-nowrap">{{ $tx->transaction_date->format('M j, Y') }}</td>
                                             <td class="px-5 py-3">
@@ -366,7 +372,7 @@
                                                 <p class="text-xs text-outline mt-0.5">{{ $tx->notes ?: '—' }}</p>
                                             </td>
                                             <td class="px-5 py-3 text-right tabular font-semibold {{ $tx->type === 'purchase' ? 'text-clay' : 'text-forest-700' }}">
-                                                {{ $tx->type === 'purchase' ? '+' : '-' }} {{ $settings->currency }} {{ number_format($tx->amount, 0) }}
+                                                {{ $tx->type === 'purchase' ? '+' : '-' }} {{ $settings->currency }} {{ $fmt($tx->amount) }}
                                             </td>
                                             <td class="px-5 py-3 text-center">
                                                 @if($tx->type === 'purchase' && $tx->milk_collection_id)
@@ -415,26 +421,25 @@
         event.preventDefault();
 
         const form = event.currentTarget;
-        let hidden = form.querySelector('input[name="action"]');
-        if (!hidden) {
-            hidden = document.createElement('input');
-            hidden.type = 'hidden';
-            hidden.name = 'action';
-            form.appendChild(hidden);
-        }
-        hidden.value = 'save_print';
+        const printBtn = form.querySelector('button[value="save_print"]');
+        // Respect the button: if it is disabled (amount too high, account settled,
+        // already saving) the shortcut must do nothing too.
+        if (!printBtn || printBtn.disabled) return;
 
-        if (form.requestSubmit) form.requestSubmit();
-        else form.submit();
+        // The button itself is the submitter, so action=save_print is sent and
+        // no leftover hidden field can override a later click on Save.
+        form.requestSubmit(printBtn);
     }
 
     // Live guard: disables Save/Save & Print the instant the typed amount
     // exceeds the remaining balance. Backend still re-checks on submit —
     // this is just so the user sees it before they click.
     function khataGuardAmount(input) {
+        const form = input.closest('form');
+        if (form.dataset.sent === '1') return; // already saving: keep buttons locked
+
         const max = parseFloat(input.dataset.maxBalance || '0');
         const value = parseFloat(input.value || '0');
-        const form = input.closest('form');
         const errorEl = form.querySelector('.khata-amount-error');
         const buttons = form.querySelectorAll('.khata-submit-btn');
 
@@ -443,5 +448,47 @@
         buttons.forEach(btn => btn.disabled = overLimit);
         if (errorEl) errorEl.classList.toggle('hidden', !overLimit);
     }
+
+    // Runs when the form is being sent: blocks a 2nd click / Enter, then shows 'Saving...'.
+    function khataOnSubmit(event) {
+        const form = event.currentTarget;
+
+        // Already sending? Ignore any further click or Enter.
+        if (form.dataset.sent === '1') { event.preventDefault(); return; }
+        form.dataset.sent = '1';
+
+        const submitter = event.submitter || null;
+        const buttons = form.querySelectorAll('.khata-submit-btn');
+
+        // Disable only AFTER the browser has taken the form data. Disabling first
+        // would drop the clicked button's value (action=save / save_print).
+        setTimeout(function () {
+            buttons.forEach(function (btn) {
+                btn.dataset.html = btn.innerHTML;
+                btn.disabled = true;
+                if (btn === submitter) {
+                    btn.innerHTML = '<span class="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin"></span> Saving...';
+                }
+            });
+        }, 0);
+
+        // Still on this page after 20s = the request failed or was cancelled
+        // (a successful save leaves this page). Unlock so the user can try again;
+        // the one-time token on the server stops any double payment.
+        setTimeout(function () {
+            form.dataset.sent = '0';
+            buttons.forEach(function (btn) {
+                if (btn.dataset.html) btn.innerHTML = btn.dataset.html;
+                btn.disabled = false;
+            });
+            const amount = form.querySelector('input[name="amount"]');
+            if (amount) khataGuardAmount(amount);
+        }, 20000);
+    }
+
+    // Back button can show an old copy of this page (old token). Load a fresh one.
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted) window.location.reload();
+    });
 </script>
 @endpush

@@ -19,7 +19,8 @@ class WorkerController extends Controller
 
     public function create(): View
     {
-        $allWorkers = Worker::select('id', 'name')->orderBy('name')->get();
+        // phone_number is needed by the form for the live duplicate check
+        $allWorkers = Worker::select('id', 'name', 'phone_number')->orderBy('name')->get();
 
         return view('workers.create', compact('allWorkers'));
     }
@@ -38,7 +39,10 @@ class WorkerController extends Controller
 
     public function edit(Worker $worker): View
     {
-        $allWorkers = Worker::select('id', 'name')->where('id', '!=', $worker->id)->orderBy('name')->get();
+        $allWorkers = Worker::select('id', 'name', 'phone_number')
+            ->where('id', '!=', $worker->id)
+            ->orderBy('name')
+            ->get();
 
         return view('workers.edit', compact('worker', 'allWorkers'));
     }
@@ -58,7 +62,7 @@ class WorkerController extends Controller
     public function toggleActive(Worker $worker): RedirectResponse
     {
         $worker->update([
-            'is_active' => !$worker->is_active,
+            'is_active' => ! $worker->is_active,
         ]);
 
         return back()->with('success', 'Worker status updated.');

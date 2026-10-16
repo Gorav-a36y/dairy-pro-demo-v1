@@ -16,7 +16,7 @@ untouched.
 php artisan migrate
 ```
 
-This adds `sales.amount_tendered` and drops the old `worker_transactions`
+This adds `sales.amount_received` and drops the old `worker_transactions`
 table + the unused `workers.balance` column.
 
 ## 3. What changed, by request
@@ -52,7 +52,7 @@ table + the unused `workers.balance` column.
    the cashier can hand in more than the total and the POS now shows a
    live "Change Due" figure; the receipt prints "Amount Received" and
    "Change Due" using the real cash tendered. Khata and Partial Khata
-   behavior is unchanged. New nullable `sales.amount_tendered` column
+   behavior is unchanged. New nullable `sales.amount_received` column
    stores what was actually handed over — `paid_amount` still always
    equals the total (that's the real revenue); the difference is just
    change given back, not extra income.
@@ -60,7 +60,7 @@ table + the unused `workers.balance` column.
 ## Notes / things worth knowing
 
 - The receipt's "Change Due" only shows a nonzero figure for sales made
-  **after** this update — older invoices don't have `amount_tendered`
+  **after** this update — older invoices don't have `amount_received`
   saved, so they display 0 change (which matches how they were actually
   paid).
 - If you want Product names to also refuse duplicating a Raw Material

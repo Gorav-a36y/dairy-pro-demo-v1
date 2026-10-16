@@ -6,18 +6,20 @@ use Illuminate\Database\Eloquent\Model;
 
 class Sale extends Model
 {
-    // Payment methods are now managed dynamically via the payment_methods
+    // Payment methods are managed dynamically via the payment_methods
     // table/Settings page — see App\Models\PaymentMethod::activeCodes().
-    const STATUS_PAID   = 'paid';
-    const STATUS_UNPAID = 'unpaid';
+    //
+    // There is no payment status on a sale on purpose. Who owes what is
+    // tracked by the khata ledger (customer_transactions). A sale only
+    // remembers what was paid at the time it was made (paid_amount).
 
     const SOURCE_POS         = 'pos';
     const SOURCE_DAILY_ROUND = 'daily_round';
 
     protected $fillable = [
         'invoice_no', 'customer_id', 'user_id', 'sale_date',
-        'subtotal', 'discount', 'total_amount', 'paid_amount', 'amount_tendered',
-        'payment_method', 'payment_status', 'source',
+        'subtotal', 'discount', 'total_amount', 'paid_amount', 'amount_received',
+        'payment_method', 'source',
     ];
 
     protected function casts(): array
@@ -28,7 +30,7 @@ class Sale extends Model
             'discount'        => 'decimal:2',
             'total_amount'    => 'decimal:2',
             'paid_amount'     => 'decimal:2',
-            'amount_tendered' => 'decimal:2',
+            'amount_received' => 'decimal:2',
         ];
     }
 
@@ -42,21 +44,16 @@ class Sale extends Model
         return $this->hasMany(SaleItem::class);
     }
 
-    /** Amount still owed on this invoice. */
+    /** Amount that was NOT paid at the time of sale (it went on khata). */
     public function balanceDue(): float
     {
         return round((float) $this->total_amount - (float) $this->paid_amount, 2);
     }
 
+    /** True when the sale was paid in full at the time of sale. */
     public function isPaid(): bool
     {
         return $this->balanceDue() <= 0;
-    }
-
-    /** Sync payment_status based on paid_amount vs total_amount. */
-    public function syncPaymentStatus(): void
-    {
-        $this->payment_status = $this->isPaid() ? self::STATUS_PAID : self::STATUS_UNPAID;
     }
 
     /**
@@ -65,10 +62,10 @@ class Sale extends Model
      */
     public function changeDue(): float
     {
-        if ($this->amount_tendered === null) {
+        if ($this->amount_received === null) {
             return 0.0;
         }
 
-        return max(round((float) $this->amount_tendered - (float) $this->total_amount, 2), 0.0);
+        return max(round((float) $this->amount_received - (float) $this->total_amount, 2), 0.0);
     }
 }

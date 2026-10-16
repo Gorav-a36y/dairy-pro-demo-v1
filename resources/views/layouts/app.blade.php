@@ -84,8 +84,6 @@
     {{-- Sidebar --}}
     <aside class="hidden lg:flex lg:flex-col w-64 shrink-0 bg-forest-900 text-forest-100 min-h-screen sticky top-0 print:hidden">
         <div class="h-16 flex items-center gap-2.5 px-6 border-b border-white/10">
-            <img src="{{ asset('dairy_pro_logo.png') }}" alt="DairyPro" class="h-8 w-8 rounded-lg object-cover"
-                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
             <span class="h-8 w-8 rounded-lg bg-gradient-to-br from-forest-300 to-forest-500 items-center justify-center hidden">
                 <i data-lucide="milk" class="h-4 w-4 text-white"></i>
             </span>

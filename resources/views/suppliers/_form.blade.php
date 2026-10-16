@@ -1,11 +1,7 @@
-@php
-    $isEdit = isset($supplier);
-    $editRouteTemplate = route('suppliers.edit', ['supplier' => '___ID___']);
-@endphp
-
-<form method="POST" action="{{ $isEdit ? route('suppliers.update', $supplier) : route('suppliers.store') }}"
+{{-- Create-only form. Suppliers cannot be edited after they are saved. --}}
+<form method="POST" action="{{ route('suppliers.store') }}"
       x-data="{
-          name: {{ json_encode(old('name', $supplier->name ?? '')) }},
+          name: {{ json_encode(old('name', '')) }},
           allSuppliers: {{ json_encode($allSuppliers ?? []) }},
           open: false,
 
@@ -26,9 +22,16 @@
       }"
       class="max-w-2xl">
     @csrf
-    @if($isEdit) @method('PUT') @endif
 
     <div class="bg-white rounded-bento border border-outline-variant shadow-bento p-8 space-y-5">
+        {{-- Warning: no edit after save --}}
+        <div class="p-3 rounded-control bg-surface-container-low border border-outline-variant flex items-start gap-2">
+            <i data-lucide="info" class="h-4 w-4 text-outline shrink-0 mt-0.5"></i>
+            <p class="text-xs text-ink-variant">
+                Name and phone <span class="font-semibold">cannot be changed</span> after you save. Please check them carefully.
+            </p>
+        </div>
+
         {{-- Name with live duplicate search --}}
         <div @click.outside="open = false" class="relative">
             <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Supplier Name</label>
@@ -62,35 +65,24 @@
                     <p class="text-sm font-semibold text-clay">
                         "<span x-text="exactMatch?.name"></span>" already exists in your database.
                     </p>
-                    <p class="text-xs text-clay/80 mt-0.5">
-                        You cannot create a duplicate.
-                        <a :href="'{{ $editRouteTemplate }}'.replace('___ID___', exactMatch.id)"
-                           class="underline hover:text-clay/70 font-semibold">Edit it instead</a>.
-                    </p>
+                    <p class="text-xs text-clay/80 mt-0.5">You cannot create a duplicate.</p>
                 </div>
             </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-5">
-            <div class="col-span-2">
-                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Phone Number</label>
-                <input type="tel" name="phone" value="{{ old('phone', $supplier->phone ?? '') }}" required
-                       class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
-                <p class="text-[11px] text-outline mt-1">Must be different from every other supplier's phone — used to avoid the same person being added twice.</p>
-                @error('phone')<p class="mt-1.5 text-xs text-clay font-medium">{{ $message }}</p>@enderror
-            </div>
-        </div>
         <div>
-            <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Address</label>
-            <textarea name="address" rows="2" required class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">{{ old('address', $supplier->address ?? '') }}</textarea>
-            @error('address')<p class="mt-1.5 text-xs text-clay font-medium">{{ $message }}</p>@enderror
+            <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Phone Number</label>
+            <input type="tel" name="phone" value="{{ old('phone') }}" required
+                   class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+            <p class="text-[11px] text-outline mt-1">Must be different from every other supplier's phone. Spaces, dashes and +92 are ignored, so 0300-1234567 and 03001234567 are the same number.</p>
+            @error('phone')<p class="mt-1.5 text-xs text-clay font-medium">{{ $message }}</p>@enderror
         </div>
     </div>
 
     <div class="flex items-center gap-3 mt-6">
-        <button type="submit" :disabled="exactMatch && !{{ json_encode($isEdit) }}"
+        <button type="submit" :disabled="exactMatch"
                 class="inline-flex items-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 disabled:bg-outline-variant disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-3 shadow-bento-sm transition">
-            <i data-lucide="save" class="h-4 w-4"></i> {{ $isEdit ? 'Update Supplier' : 'Save Supplier' }}
+            <i data-lucide="save" class="h-4 w-4"></i> Save Supplier
         </button>
         <a href="{{ route('suppliers.index') }}" class="text-sm font-medium text-outline hover:text-ink px-3">Cancel</a>
     </div>

@@ -3,7 +3,7 @@
 @section('page-title', 'Milk Collection')
 
 @section('content')
-<div class="space-y-6" x-data="{ showForm: false }">
+<div class="space-y-6" x-data="{ showForm: {{ $errors->any() ? 'true' : 'false' }} }">
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="bg-white rounded-bento border border-outline-variant shadow-bento p-5">
@@ -39,6 +39,7 @@
          x-data="{
             quantity: '', purchasePrice: '', fat: '', snf: '',
             isLiquid: false,
+            milkIds: {{ json_encode($rawMaterials->where('is_milk', true)->pluck('id')->values()) }},
             paymentMethod: '{{ $paymentMethods->firstWhere('code', 'cash')?->code ?? optional($paymentMethods->first())->code }}',
             paidAmount: 0,
             shift: (() => {
@@ -48,25 +49,41 @@
                 if (h >= 17 && h < 21) return 'evening';
                 return 'night';
             })(),
-            get total() { return ((parseFloat(this.quantity)||0) * (parseFloat(this.purchasePrice)||0)).toFixed(0) },
-            get totalNumber() { return (parseFloat(this.quantity)||0) * (parseFloat(this.purchasePrice)||0) },
+
+            // Total is rounded to 2 decimals, the same way the server does it.
+            get totalNumber() { return Math.round((parseFloat(this.quantity)||0) * (parseFloat(this.purchasePrice)||0) * 100) / 100 },
+            get total() { return this.totalNumber.toFixed(2) },
+            get totalCents() { return Math.round(this.totalNumber * 100) },
             get isKhata() { return this.paymentMethod === 'khata' },
             get isPartialKhata() { return this.paymentMethod === 'partial_khata' },
             // Khata: locked at 0. Everything else (Partial Khata, Cash, Other): editable.
             get paidAmountEditable() { return !this.isKhata },
 
+            get paidCents() {
+                const p = parseFloat(this.paidAmount);
+                return isNaN(p) ? null : Math.round(p * 100);
+            },
+
             get returnAmount() {
-                if (this.isKhata || this.isPartialKhata) return 0;
-                return Math.max(0, (parseFloat(this.paidAmount) || 0) - this.totalNumber);
+                if (this.isKhata || this.isPartialKhata || this.paidCents === null) return 0;
+                return Math.max(0, (this.paidCents - this.totalCents) / 100);
             },
 
-            get cashUnderpaid() {
-                return !this.isKhata && !this.isPartialKhata
-                    && this.totalNumber > 0
-                    && (parseFloat(this.paidAmount) || 0) + 0.01 < this.totalNumber;
+            // One rule for every payment method. Empty string = amount is fine.
+            get paidError() {
+                if (this.paidCents === null) return 'Cash given is required.';
+                if (this.totalCents <= 0) return 'Purchase price must be greater than 0.';
+                if (this.paidCents < 0) return 'Cash given cannot be negative.';
+                if (this.isKhata) return this.paidCents === 0 ? '' : 'Cash given must be 0 for Khata.';
+                if (this.isPartialKhata) {
+                    return (this.paidCents > 0 && this.paidCents < this.totalCents)
+                        ? ''
+                        : 'For Partial Khata, cash given must be more than 0 and less than the total. Select Khata if nothing is paid, or Cash if the full amount is paid.';
+                }
+                return this.paidCents >= this.totalCents ? '' : 'Cash given cannot be less than the total.';
             },
+            get showPaidError() { return this.paidError !== '' && this.quantity !== '' && this.purchasePrice !== '' },
 
-            get partialKhataEqualsTotal() { return this.isPartialKhata && this.totalNumber > 0 && (parseFloat(this.paidAmount) || 0) >= this.totalNumber },
             get totalSolids() {
                 if (this.fat === '' || this.snf === '') return '';
                 return ((parseFloat(this.fat)||0) + (parseFloat(this.snf)||0)).toFixed(2)
@@ -93,6 +110,17 @@
             @keydown.enter="if ($event.shiftKey) { $event.preventDefault(); $refs.printFlag.value = '1'; $el.requestSubmit(); } else if ($event.target.tagName !== 'TEXTAREA') { $event.preventDefault(); $refs.printFlag.value = '0'; $el.requestSubmit(); }"
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             @csrf
+
+            @if($errors->any())
+                <div class="sm:col-span-2 lg:col-span-3 rounded-control border border-clay/30 bg-clay-container/50 p-4">
+                    <ul class="text-sm text-clay font-medium space-y-1 list-disc pl-5">
+                        @foreach($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
             <x-searchable-select name="supplier_id" :options="$suppliers" label="Supplier" placeholder="Search supplier..." required />
 
             <x-searchable-select
@@ -101,7 +129,7 @@
                 label="Raw Material"
                 placeholder="Search raw material..."
                 required
-                onSelect="isLiquid = ['liter','litre','l'].includes((item.sublabel || '').toLowerCase().trim())"
+                onSelect="isLiquid = milkIds.map(String).includes(String(item.id)); if (!isLiquid) { fat = ''; snf = ''; }"
             />
 
             <div>
@@ -113,7 +141,7 @@
 
             <div>
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Purchase Price (per unit)</label>
-                <input type="number" step="0.01" min="0" name="purchase_price" x-model="purchasePrice" required
+                <input type="number" step="0.01" min="0.01" name="purchase_price" x-model="purchasePrice" required
                        class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
             </div>
 
@@ -126,7 +154,7 @@
 
             <div>
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Shift</label>
-                <select name="shift" x-model="shift"
+                <select name="shift" x-model="shift" required
                         class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
                     <option value="morning">Morning</option>
                     <option value="afternoon">Afternoon</option>
@@ -137,13 +165,13 @@
             </div>
 
             <div x-show="isLiquid" x-cloak>
-                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Fat (%)</label>
+                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Fat (%) <span class="normal-case font-normal text-outline">(optional)</span></label>
                 <input type="number" step="0.01" min="0" max="100" name="fat" x-model="fat"
                        class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
             </div>
 
             <div x-show="isLiquid" x-cloak>
-                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">SNF (%)</label>
+                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">SNF (%) <span class="normal-case font-normal text-outline">(optional)</span></label>
                 <input type="number" step="0.01" min="0" max="100" name="snf" x-model="snf"
                        class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
             </div>
@@ -159,31 +187,30 @@
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">
                     <span x-text="isKhata ? 'Paid Amount' : 'Cash Given'"></span>
                 </label>
-                <input type="number" step="0.01" min="0" name="paid_amount"
+                <input type="number" step="0.01" min="0" name="paid_amount" required
                     x-model.number="paidAmount" :readonly="!paidAmountEditable"
                     :class="!paidAmountEditable ? 'bg-surface-container-low text-outline cursor-not-allowed' : ''"
                     class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
 
                 <p x-show="isKhata" x-cloak class="text-[11px] text-outline mt-1">Fully unpaid — the whole amount goes onto the supplier's khata.</p>
-                <p x-show="isPartialKhata" x-cloak class="text-[11px] text-outline mt-1">Enter what's paid now — the rest goes onto the supplier's khata.</p>
+                <p x-show="isPartialKhata" x-cloak class="text-[11px] text-outline mt-1">Enter what's paid now (more than 0, less than the total) — the rest goes onto the supplier's khata.</p>
                 <p x-show="!isKhata && !isPartialKhata" x-cloak class="text-[11px] text-outline mt-1">Auto-filled to the total — edit if you handed over more cash.</p>
 
-                <p x-show="partialKhataEqualsTotal" x-cloak class="text-[11px] text-clay font-semibold mt-1">Paid amount can't equal the total under Partial Khata — select Cash (or another method) if the full amount is being paid.</p>
-                <p x-show="cashUnderpaid" x-cloak class="text-[11px] text-clay font-semibold mt-1">Cash given cannot be less than the total.</p>
+                <p x-show="showPaidError" x-cloak x-text="paidError" class="text-[11px] text-clay font-semibold mt-1"></p>
             </div>
 
             <div x-show="returnAmount > 0" x-cloak class="sm:col-span-2 lg:col-span-3">
                 <div class="flex items-center gap-3 rounded-control border-2 border-red-300 bg-red-50 px-5 py-4">
                     <i data-lucide="alert-circle" class="h-6 w-6 text-red-600 shrink-0"></i>
                     <p class="text-base font-bold text-red-700">
-                        Return to give: {{ $settings->currency ?? 'Rs.' }} <span x-text="returnAmount.toFixed(0)"></span>
+                        Return to give: {{ $settings->currency ?? 'Rs.' }} <span x-text="returnAmount.toFixed(2)"></span>
                     </p>
                 </div>
             </div>
 
             <div>
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Payment Method</label>
-                <select name="payment_method" x-model="paymentMethod" class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+                <select name="payment_method" x-model="paymentMethod" required class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
                     @foreach($paymentMethods as $method)
                         <option value="{{ $method->code }}">{{ $method->name }}</option>
                     @endforeach
@@ -191,20 +218,20 @@
             </div>
 
             <div class="sm:col-span-2 lg:col-span-3">
-                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Note</label>
-                <input type="text" name="notes" placeholder="e.g. quality checked, morning delivery"
+                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Note <span class="normal-case font-normal text-outline">(optional)</span></label>
+                <input type="text" name="notes" maxlength="500" placeholder="e.g. quality checked, morning delivery"
                        class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
             </div>
 
             <input type="hidden" name="print" x-ref="printFlag" value="0">
 
             <div class="sm:col-span-2 lg:col-span-3 flex items-center gap-3">
-                <button type="submit" @click="$refs.printFlag.value = '0'" :disabled="partialKhataEqualsTotal || cashUnderpaid"
+                <button type="submit" @click="$refs.printFlag.value = '0'" :disabled="!!paidError"
                         class="inline-flex items-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 text-white text-sm font-semibold px-5 py-3 shadow-bento-sm transition disabled:bg-outline-variant disabled:text-outline disabled:cursor-not-allowed">
                     <i data-lucide="save" class="h-4 w-4"></i> Save Collection
                     <span class="text-xs opacity-70 font-normal">(Enter)</span>
                 </button>
-                <button type="submit" @click="$refs.printFlag.value = '1'" :disabled="partialKhataEqualsTotal || cashUnderpaid"
+                <button type="submit" @click="$refs.printFlag.value = '1'" :disabled="!!paidError"
                         class="inline-flex items-center gap-2 rounded-control border border-forest-700 text-forest-700 hover:bg-forest-50 text-sm font-semibold px-5 py-3 transition disabled:border-outline-variant disabled:text-outline disabled:cursor-not-allowed">
                     <i data-lucide="printer" class="h-4 w-4"></i> Save &amp; Print
                     <span class="text-xs opacity-70 font-normal">(Shift+Enter)</span>
@@ -215,14 +242,14 @@
 
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <form method="GET" class="flex flex-col sm:flex-row gap-3 w-full sm:max-w-lg">
-            <input type="date" name="from" value="{{ request('from') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
-            <input type="date" name="to" value="{{ request('to') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
-            <button type="submit" class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition">
+            <input type="date" name="from" value="{{ request('from') }}" class="rounded-control border border-outline-variant bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+            <input type="date" name="to" value="{{ request('to') }}" class="rounded-control border border-outline-variant bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
+            <button type="submit" class="inline-flex items-center gap-2 rounded-control border border-outline-variant bg-white text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition">
                 <i data-lucide="filter" class="h-4 w-4"></i> Filter
             </button>
         </form>
         <a href="{{ route('milk-collections.exportCsv', ['from' => request('from'), 'to' => request('to')]) }}"
-           class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
+           class="inline-flex items-center gap-2 rounded-control border border-outline-variant bg-white text-ink-variant text-sm font-semibold px-4 py-2.5 hover:bg-surface-container-low transition shrink-0">
             <i data-lucide="download" class="h-4 w-4"></i> Download CSV
         </a>
     </div>
@@ -273,7 +300,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="11" class="px-6 py-10 text-center text-outline">No collections recorded yet.</td></tr>
+                        <tr><td colspan="12" class="px-6 py-10 text-center text-outline">No collections recorded yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

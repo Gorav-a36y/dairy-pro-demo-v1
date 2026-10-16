@@ -14,10 +14,6 @@ return new class extends Migration
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
             $table->decimal('multiplier', 8, 2)->default(1);
             $table->decimal('output_qty', 12, 2);
-            $table->decimal('batch_cost', 12, 2);
-            $table->decimal('cost_per_unit', 12, 2);
-            $table->string('status')->default('completed');
-            $table->text('notes')->nullable();
             $table->timestamps();
         });
     }

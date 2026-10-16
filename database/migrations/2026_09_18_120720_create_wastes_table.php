@@ -23,9 +23,8 @@ return new class extends Migration
             $table->decimal('quantity', 12, 2);
             $table->text('note')->nullable();
 
-            // Date of the waste entry — always set to "today" by the controller,
-            // never user-editable, but stored as its own column (not just
-            // relying on created_at) in case backdating is ever needed later.
+            // Date of the waste. Required on the form: it starts as today and
+            // can be changed to an earlier day, but never to a future day.
             $table->date('wasted_at');
 
             $table->timestamps();

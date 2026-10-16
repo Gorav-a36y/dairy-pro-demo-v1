@@ -1,9 +1,27 @@
 @php
-$isEdit = isset($customer);
-$isDaily = old('is_daily_customer', $isEdit ? $customer->is_daily_customer : false);
-$currentDailyKey = $isEdit && $customer->daily_item_type && $customer->daily_item_id
-    ? $customer->daily_item_type . ':' . $customer->daily_item_id
-    : '';
+    $isEdit = isset($customer);
+    $dailyItems = $dailyItems ?? [];                 // guard against missing include data
+    $allCustomers = $allCustomers ?? [];
+    $customerDailyItems = $customerDailyItems ?? [];
+
+    // Decide if the "Daily Customer" box starts ticked.
+    //  - After a failed save: use what the user had on screen. An unticked box
+    //    is not sent at all, so "missing" means "unticked".
+    //  - Otherwise: use the saved value. A new customer is never daily by default.
+    // Having rows in the list must NOT tick the box (the edit page always shows
+    // one empty row, and that used to make every customer look like a daily customer).
+    $hasOldInput = ! empty(old());
+    $isDaily = $hasOldInput
+        ? (bool) old('is_daily_customer', false)
+        : ($isEdit ? (bool) $customer->is_daily_customer : false);
+
+    // Collect ALL daily_items.* errors in one place (server-side, index-agnostic)
+    $dailyItemErrors = collect()
+        ->merge($errors->get('daily_items'))
+        ->merge($errors->get('daily_items.*.item_key'))
+        ->merge($errors->get('daily_items.*.quantity'))
+        ->unique()
+        ->values();
 @endphp
 
 <form method="POST"
@@ -11,8 +29,46 @@ $currentDailyKey = $isEdit && $customer->daily_item_type && $customer->daily_ite
       x-data="{
           isDaily: {{ $isDaily ? 'true' : 'false' }},
           name: {{ json_encode(old('name', $customer->name ?? '')) }},
-          allCustomers: {{ json_encode($allCustomers ?? []) }},
+          allCustomers: {{ json_encode($allCustomers) }},
           nameOpen: false,
+
+          // Each row gets a stable unique id so Alpine's x-for
+          // doesn't glitch when rows are removed from the middle.
+          nextUid: 1,
+          items: [],
+
+          init() {
+              // Seed saved/old rows (edit page or validation failure).
+              const seeded = @js(array_values($customerDailyItems));
+
+              this.items = seeded.map(row => ({
+                  uid: this.nextUid++,
+                  item_key: row.item_key ?? '',
+                  quantity: row.quantity ?? '',
+              }));
+
+              // Daily customer with no rows yet -> show one immediately.
+              if (this.isDaily && this.items.length === 0) {
+                  this.addItem();
+              }
+          },
+
+          addItem() {
+              this.items.push({ uid: this.nextUid++, item_key: '', quantity: '' });
+              this.$nextTick(() => window.lucide && lucide.createIcons());
+          },
+
+          removeItem(uid) {
+              this.items = this.items.filter(item => item.uid !== uid);
+              // Never leave a daily customer with zero visible rows.
+              if (this.items.length === 0) this.addItem();
+          },
+
+          onToggleDaily() {
+              if (this.isDaily && this.items.length === 0) {
+                  this.addItem();
+              }
+          },
 
           get filteredCustomersByName() {
               if (this.name.trim().length < 1) return [];
@@ -28,98 +84,143 @@ $currentDailyKey = $isEdit && $customer->daily_item_type && $customer->daily_ite
               this.name = c.name;
               this.nameOpen = false;
           }
-      }">
+      }"
+      x-init="init()">
     @csrf
     @if($isEdit)
         @method('PUT')
     @endif
 
     <div class="bg-white rounded-bento border border-outline-variant shadow-bento p-8 space-y-5">
+        @unless($isEdit)
+            <div class="p-3 rounded-control bg-surface-container-low border border-outline-variant flex items-start gap-2">
+                <i data-lucide="info" class="h-4 w-4 text-outline shrink-0 mt-0.5"></i>
+                <p class="text-xs text-ink-variant">
+                    The customer name <span class="font-semibold">cannot be changed</span> after you save. Please check it carefully.
+                </p>
+            </div>
+        @endunless
+
         <div @click.outside="nameOpen = false" class="relative">
             <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Customer / Business Name</label>
-            <input type="text" name="name" x-model="name" autocomplete="off" required
-                   @focus="nameOpen = true"
-                   @input="nameOpen = true"
-                   class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
 
-            <div x-show="nameOpen && filteredCustomersByName.length > 0" x-cloak x-transition
-                 class="absolute z-30 mt-1.5 w-full max-h-56 overflow-y-auto rounded-control border border-outline-variant bg-white shadow-bento py-1">
-                <div class="px-4 py-2 text-[11px] font-semibold text-outline uppercase tracking-wide border-b border-outline-variant/60">
-                    Already in database
-                </div>
-                <template x-for="c in filteredCustomersByName" :key="c.id">
-                    <button type="button" @click="selectExistingName(c)"
-                            class="w-full text-left px-4 py-2.5 text-sm hover:bg-surface-container-low flex items-center justify-between gap-3 transition">
-                        <span class="font-medium text-ink" x-text="c.name"></span>
-                    </button>
-                </template>
-            </div>
+            @if($isEdit)
+                <input type="text" value="{{ $customer->name }}" disabled
+                       class="w-full rounded-control border border-outline-variant bg-surface-container-low text-outline cursor-not-allowed px-4 py-3 text-sm">
+                <p class="text-[11px] text-outline mt-1">The name cannot be changed after the customer is created.</p>
+            @else
+                <input type="text" name="name" x-model="name" autocomplete="off" required
+                       @focus="nameOpen = true"
+                       @input="nameOpen = true"
+                       class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+            @endif
+            @error('name')<p class="mt-1.5 text-xs text-clay font-medium">{{ $message }}</p>@enderror
 
-            <div x-show="exactNameMatch" x-cloak x-transition
-                 class="mt-2.5 p-3 rounded-control bg-clay-container/50 border border-clay/30 flex items-start gap-2">
-                <i data-lucide="alert-circle" class="h-4 w-4 text-clay shrink-0 mt-0.5"></i>
-                <div>
-                    <p class="text-sm font-semibold text-clay">
-                        A customer named "<span x-text="exactNameMatch?.name"></span>" already exists.
-                    </p>
-                    <p class="text-xs text-clay/80 mt-0.5">
-                        This may be the same person — double check before saving. (Different people can share a name, so this is just a heads-up, not a hard block.)
-                    </p>
+            @unless($isEdit)
+                <div x-show="nameOpen && filteredCustomersByName.length > 0" x-cloak x-transition
+                     class="absolute z-30 mt-1.5 w-full max-h-56 overflow-y-auto rounded-control border border-outline-variant bg-white shadow-bento py-1">
+                    <div class="px-4 py-2 text-[11px] font-semibold text-outline uppercase tracking-wide border-b border-outline-variant/60">
+                        Already in database
+                    </div>
+                    <template x-for="c in filteredCustomersByName" :key="c.id">
+                        <button type="button" @click="selectExistingName(c)"
+                                class="w-full text-left px-4 py-2.5 text-sm hover:bg-surface-container-low flex items-center justify-between gap-3 transition">
+                            <span class="font-medium text-ink" x-text="c.name"></span>
+                        </button>
+                    </template>
                 </div>
-            </div>
+
+                <div x-show="exactNameMatch" x-cloak x-transition
+                     class="mt-2.5 p-3 rounded-control bg-clay-container/50 border border-clay/30 flex items-start gap-2">
+                    <i data-lucide="alert-circle" class="h-4 w-4 text-clay shrink-0 mt-0.5"></i>
+                    <div>
+                        <p class="text-sm font-semibold text-clay">
+                            A customer named "<span x-text="exactNameMatch?.name"></span>" already exists.
+                        </p>
+                        <p class="text-xs text-clay/80 mt-0.5">
+                            You cannot save a customer with a name that already exists. Please use a different name.
+                        </p>
+                    </div>
+                </div>
+            @endunless
         </div>
-        <div class="grid grid-cols-2 gap-5">
-            <div>
-                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Phone</label>
-                <input type="text" name="phone" value="{{ old('phone', $customer->phone ?? '') }}" required
-                       class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
-                @error('phone')<p class="mt-1.5 text-xs text-clay font-medium">{{ $message }}</p>@enderror
-            </div>
-            <div>
-                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Email</label>
-                <input type="email" name="email" value="{{ old('email', $customer->email ?? '') }}"
-                       class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
-                @error('email')<p class="mt-1.5 text-xs text-clay font-medium">{{ $message }}</p>@enderror
-            </div>
-        </div>
-        <p class="text-[11px] text-outline -mt-2">Phone and email must each be different from every other customer — this keeps the same person from being added twice.</p>
+
         <div>
-            <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Address</label>
-            <textarea name="address" rows="2" required class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">{{ old('address', $customer->address ?? '') }}</textarea>
-            @error('address')<p class="mt-1.5 text-xs text-clay font-medium">{{ $message }}</p>@enderror
+            <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Phone</label>
+            <input type="text" name="phone" value="{{ old('phone', $customer->phone ?? '') }}" required
+                   class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+            <p class="text-[11px] text-outline mt-1">Must be different from every other customer's phone. Spaces, dashes and +92 are ignored, so 0300-1234567 and 03001234567 are the same number.</p>
+            @error('phone')<p class="mt-1.5 text-xs text-clay font-medium">{{ $message }}</p>@enderror
         </div>
 
         <div class="pt-5 border-t border-outline-variant">
-            <label class="flex items-center gap-2.5">
-                <input type="checkbox" name="is_daily_customer" value="1" x-model="isDaily"
-                       class="h-4 w-4 rounded border-outline-variant text-forest-700 focus:ring-forest-700">
-                <span class="text-sm font-semibold text-ink">Daily Customer</span>
-            </label>
-            <p class="text-[11px] text-outline mt-1 ml-6">Takes milk (or another item) every day and pays at month end. Shows up on the Daily Round page with these defaults pre-filled.</p>
+            {{-- Checkbox left, green "Add Another Item" button right --}}
+            <div class="flex items-center justify-between gap-3">
+                <label class="flex items-center gap-2.5">
+                    <input type="checkbox" name="is_daily_customer" value="1" x-model="isDaily"
+                           @change="onToggleDaily()"
+                           class="h-4 w-4 rounded border-outline-variant text-forest-700 focus:ring-forest-700">
+                    <span class="text-sm font-semibold text-ink">Daily Customer</span>
+                </label>
 
-            <div x-show="isDaily" x-cloak x-transition class="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-4">
-                <div>
-                    <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Usual Item</label>
-                    <select name="daily_item_key" class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
-                        <option value="">Select item...</option>
-                        @foreach($dailyItems as $item)
-                            <option value="{{ $item['id'] }}" @selected(old('daily_item_key', $currentDailyKey) === $item['id'])>{{ $item['label'] }} ({{ $item['sublabel'] }})</option>
+                <button type="button" x-show="isDaily" x-cloak @click="addItem()"
+                        class="inline-flex items-center gap-1.5 rounded-control bg-forest-700 hover:bg-forest-800 text-white text-xs font-semibold px-4 py-2.5 shadow-bento-sm transition">
+                    <i data-lucide="plus" class="h-4 w-4"></i> Add Another Item
+                </button>
+            </div>
+            <p class="text-[11px] text-outline mt-1">Takes one or more items every day and pays at month end. Shows up on the Daily Round page with these defaults pre-filled.</p>
+
+            <div x-show="isDaily" x-cloak x-transition class="space-y-4 mt-4">
+                <template x-for="item in items" :key="item.uid">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide"
+                                   x-text="item.uid === items[0].uid ? 'Usual Item' : 'Another Item'"></label>
+                            <select :name="'daily_items[' + (items.indexOf(item)) + '][item_key]'"
+                                    x-model="item.item_key"
+                                    class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+                                <option value="">Select item...</option>
+                                @foreach($dailyItems as $option)
+                                    <option value="{{ $option['id'] }}">{{ $option['label'] }} ({{ $option['sublabel'] }})</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <div class="flex-1">
+                                <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide"
+                                       x-text="item.uid === items[0].uid ? 'Usual Quantity' : 'Quantity'"></label>
+                                <input type="number" step="0.01" min="0.01"
+                                       :name="'daily_items[' + (items.indexOf(item)) + '][quantity]'"
+                                       x-model="item.quantity"
+                                       class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
+                            </div>
+                            <button type="button" x-show="items.length > 1" @click="removeItem(item.uid)"
+                                    class="mt-[30px] h-[46px] w-[46px] shrink-0 rounded-control border border-outline-variant text-clay hover:bg-clay/10 flex items-center justify-center transition"
+                                    title="Remove this item">
+                                <i data-lucide="trash-2" class="h-4 w-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+                {{-- All daily-item validation errors render here (server-side) --}}
+                @if($dailyItemErrors->isNotEmpty())
+                    <div class="p-3 rounded-control bg-clay-container/50 border border-clay/30">
+                        @foreach($dailyItemErrors as $message)
+                            <p class="text-xs text-clay font-medium">{{ $message }}</p>
                         @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Usual Quantity</label>
-                    <input type="number" step="0.01" min="0.01" name="daily_quantity" value="{{ old('daily_quantity', $customer->daily_quantity ?? '') }}"
-                           class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
-                </div>
+                    </div>
+                @endif
             </div>
         </div>
     </div>
 
     <div class="flex items-center gap-3 mt-6">
         <button type="submit"
+                @unless($isEdit)
                 :disabled="exactNameMatch"
                 :class="exactNameMatch ? 'opacity-50 cursor-not-allowed' : ''"
+                @endunless
                 class="inline-flex items-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 text-white text-sm font-semibold px-5 py-3 shadow-bento-sm transition">
             <i data-lucide="save" class="h-4 w-4"></i> {{ $isEdit ? 'Update Customer' : 'Save Customer' }}
         </button>

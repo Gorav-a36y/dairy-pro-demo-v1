@@ -100,9 +100,7 @@ NOTE:
 {{ $center('Thank you!') }}
 {{ $thin }}
 {{ $center('Software by GoravAI') }}
-@if($settings->phone)
-{{ $center('WhatsApp: ' . $settings->phone) }}
-@endif
+{{ $center('WhatsApp: +92 331 2726787') }}
 {{ $line }}</pre>
 </div>
 

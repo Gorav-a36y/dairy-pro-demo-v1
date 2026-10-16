@@ -58,15 +58,15 @@ class ProductController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255', $this->uniqueNameRule()],
             'unit' => 'required|string|in:' . implode(',', Product::UNITS),
-            'selling_price' => 'required|numeric|min:0.01',
-            'output_qty_per_batch' => 'required|numeric|min:0.01',
+            'selling_price' => 'required|numeric|min:0.01|max:9999999999.99',
+            'output_qty_per_batch' => 'required|numeric|min:0.01|max:9999999999.99',
             'raw_materials' => 'required|array|min:1',
-            'raw_materials.*.raw_material_id' => 'nullable|exists:raw_materials,id',
-            'raw_materials.*.quantity_required' => 'nullable|numeric|min:0.01',
+            'raw_materials.*.raw_material_id' => 'required|exists:raw_materials,id|distinct',
+            'raw_materials.*.quantity_required' => 'required|numeric|min:0.01|max:9999999999.99',
             'is_active' => 'nullable|boolean',
         ]);
 
-        $data['name'] = trim($data['name']);   // ← add here
+        $data['name'] = trim($data['name']);
 
         $recipeRows = collect($data['raw_materials'])->filter(
             fn ($row) => !empty($row['raw_material_id']) && !empty($row['quantity_required'])
@@ -86,12 +86,7 @@ class ProductController extends Controller
                 'is_active' => $request->boolean('is_active', true),
             ]);
 
-            $sync = [];
-            foreach ($recipeRows as $row) {
-                $sync[$row['raw_material_id']] = ['quantity_required' => (float) $row['quantity_required']];
-            }
-
-            $product->rawMaterials()->sync($sync);
+            $this->syncRecipe($product, $recipeRows->all());
 
             return $product;
         });
@@ -116,19 +111,20 @@ class ProductController extends Controller
 
     public function update(Request $request, Product $product)
     {
+        // 'unit' and 'stock_qty' are deliberately NOT validated or saved here:
+        // the unit is locked after creation, and stock only changes through
+        // Batch Production / sales / waste. Anything sent for them is ignored.
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255', $this->uniqueNameRule($product->id)],
-            'unit' => 'required|string|in:' . implode(',', Product::UNITS),
-            'selling_price' => 'required|numeric|min:0.01',
-            'stock_qty' => 'nullable|numeric|min:0',
-            'output_qty_per_batch' => 'required|numeric|min:0.01',
+            'selling_price' => 'required|numeric|min:0.01|max:9999999999.99',
+            'output_qty_per_batch' => 'required|numeric|min:0.01|max:9999999999.99',
             'raw_materials' => 'required|array|min:1',
-            'raw_materials.*.raw_material_id' => 'nullable|exists:raw_materials,id',
-            'raw_materials.*.quantity_required' => 'nullable|numeric|min:0.01',
+            'raw_materials.*.raw_material_id' => 'required|exists:raw_materials,id|distinct',
+            'raw_materials.*.quantity_required' => 'required|numeric|min:0.01|max:9999999999.99',
             'is_active' => 'nullable|boolean',
         ]);
 
-        $data['name'] = trim($data['name']);   // ← add here
+        $data['name'] = trim($data['name']);
 
         $recipeRows = collect($data['raw_materials'])->filter(
             fn ($row) => !empty($row['raw_material_id']) && !empty($row['quantity_required'])
@@ -138,18 +134,17 @@ class ProductController extends Controller
             return back()->withInput()->with('error', 'Add at least one raw material to the recipe.');
         }
 
-        $product->update([
-            'name' => $data['name'],
-            'unit' => $data['unit'],
-            'selling_price' => $data['selling_price'],
-            'stock_qty' => $data['stock_qty'] ?? $product->stock_qty,
-            'output_qty_per_batch' => $data['output_qty_per_batch'],
-            'is_active' => $request->boolean('is_active', true),
-        ]);
+        DB::transaction(function () use ($product, $data, $recipeRows, $request) {
+            $product->update([
+                'name' => $data['name'],
+                'selling_price' => $data['selling_price'],
+                'output_qty_per_batch' => $data['output_qty_per_batch'],
+                // Optional field: if it is not sent, keep the current status.
+                'is_active' => $request->boolean('is_active', $product->is_active),
+            ]);
 
-        if ($request->has('raw_materials')) {
-            $this->syncRecipe($product, $request->input('raw_materials', []));
-        }
+            $this->syncRecipe($product, $recipeRows->all());
+        });
 
         return redirect()->route('products.index')->with('success', 'Product updated successfully.');
     }
@@ -184,7 +179,7 @@ class ProductController extends Controller
             if (empty($row['raw_material_id']) || empty($row['quantity_required'])) {
                 continue;
             }
-            $sync[$row['raw_material_id']] = ['quantity_required' => $row['quantity_required']];
+            $sync[$row['raw_material_id']] = ['quantity_required' => (float) $row['quantity_required']];
         }
 
         $product->rawMaterials()->sync($sync);

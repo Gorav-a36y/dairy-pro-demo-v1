@@ -8,8 +8,7 @@
     <div class="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-4">
         <form method="GET"
             class="bg-white rounded-bento border border-outline-variant shadow-bento p-4 flex items-center gap-4 w-full sm:flex-1 min-w-0">
-            <x-search-bar name="search" placeholder="Search suppliers..."
-                        x-data @input.debounce.400ms="$event.target.form.requestSubmit()" />
+            <x-search-bar name="search" placeholder="Search suppliers..."/>
         </form>
 
         <a href="{{ route('suppliers.create') }}"
@@ -18,7 +17,7 @@
         </a>
     </div>
 
-    <div class="bg-white rounded-bento border border-outline-variant shadow-bento overflow-hidden">
+    <div id="live-results" class="bg-white rounded-bento border border-outline-variant shadow-bento overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
@@ -48,12 +47,13 @@
                             <td class="px-6 py-4">
                                 <div class="flex items-center justify-end gap-1">
                                     <a href="{{ route('khata.index', ['tab' => 'supplier', 'id' => $supplier->id]) }}" class="p-2 rounded-control text-outline hover:text-forest-700 hover:bg-forest-50 transition" title="View Khata"><i data-lucide="book-text" class="h-4 w-4"></i></a>
-                                    <a href="{{ route('suppliers.edit', $supplier) }}" class="p-2 rounded-control text-outline hover:text-forest-700 hover:bg-forest-50 transition"><i data-lucide="pencil" class="h-4 w-4"></i></a>
                                 </div>
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="4" class="px-6 py-10 text-center text-outline">No suppliers yet. Add your first farmer or supplier.</td></tr>
+                        <tr><td colspan="4" class="px-6 py-10 text-center text-outline">
+                            {{ request()->filled('search') ? 'No suppliers match your search.' : 'No suppliers yet. Add your first farmer or supplier.' }}
+                        </td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use LogicException;
 
 class PaymentMethod extends Model
 {
@@ -22,6 +23,27 @@ class PaymentMethod extends Model
             'is_active'  => 'boolean',
             'sort_order' => 'integer',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // System methods (Khata, Partial Khata) can never be deleted.
+        static::deleting(function (PaymentMethod $method) {
+            if ($method->is_system) {
+                throw new LogicException("{$method->name} is a system payment method and cannot be deleted.");
+            }
+        });
+
+        // System methods must stay active, keep their code, and stay "system".
+        static::updating(function (PaymentMethod $method) {
+            if (! $method->getOriginal('is_system')) {
+                return;
+            }
+
+            if (! $method->is_active || ! $method->is_system || $method->isDirty('code')) {
+                throw new LogicException("{$method->getOriginal('name')} is a system payment method and cannot be deactivated or changed this way.");
+            }
+        });
     }
 
     public function scopeActive($query)

@@ -8,16 +8,15 @@
         {{-- Filter card: search + dates + filter — one white card like other pages --}}
         <form method="GET"
             class="bg-white rounded-bento border border-outline-variant shadow-bento p-4 flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:flex-1 min-w-0">
-            <x-search-bar name="search" placeholder="Search invoice no..."
-                        x-data @input.debounce.400ms="$event.target.form.requestSubmit()" />
+            <x-search-bar name="search" placeholder="Search invoice no..." />
 
             <input type="date" name="from" value="{{ request('from') }}"
-                class="shrink-0 rounded-control border border-outline-variant px-4 py-3 text-sm tabular focus:outline-none focus:ring-2 focus:ring-forest-700">
+                class="shrink-0 rounded-control border border-outline-variant bg-white px-4 py-3 text-sm tabular focus:outline-none focus:ring-2 focus:ring-forest-700">
             <input type="date" name="to" value="{{ request('to') }}"
-                class="shrink-0 rounded-control border border-outline-variant px-4 py-3 text-sm tabular focus:outline-none focus:ring-2 focus:ring-forest-700">
+                class="shrink-0 rounded-control border border-outline-variant bg-white px-4 py-3 text-sm tabular focus:outline-none focus:ring-2 focus:ring-forest-700">
 
             <button type="submit"
-                    class="shrink-0 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-3 hover:bg-surface-container-low transition">
+                    class="shrink-0 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control border border-outline-variant bg-white text-ink-variant text-sm font-semibold px-4 py-3 hover:bg-surface-container-low transition">
                 <i data-lucide="filter" class="h-4 w-4"></i> Filter
             </button>
         </form>
@@ -25,7 +24,8 @@
         {{-- Actions --}}
         <div class="flex gap-2 items-center shrink-0">
             <a href="{{ route('sales.exportCsv', ['search' => request('search'), 'from' => request('from'), 'to' => request('to')]) }}"
-            class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-4 py-3 hover:bg-surface-container-low transition">
+            onclick="const u = new URL(this.href); const p = new URLSearchParams(location.search); ['search','from','to'].forEach(k => p.get(k) ? u.searchParams.set(k, p.get(k)) : u.searchParams.delete(k)); this.href = u.toString();"
+            class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control border border-outline-variant bg-white text-ink-variant text-sm font-semibold px-4 py-3 hover:bg-surface-container-low transition">
                 <i data-lucide="download" class="h-4 w-4"></i> Download CSV
             </a>
             <a href="{{ route('sales.pos') }}"
@@ -35,7 +35,7 @@
         </div>
     </div>
 
-    <div class="bg-white rounded-bento border border-outline-variant shadow-bento overflow-hidden">
+    <div id="live-results" class="bg-white rounded-bento border border-outline-variant shadow-bento overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
@@ -44,7 +44,6 @@
                         <th class="px-6 py-3 font-semibold">Customer</th>
                         <th class="px-6 py-3 font-semibold">Date</th>
                         <th class="px-6 py-3 font-semibold">Method</th>
-                        <th class="px-6 py-3 font-semibold">Status</th>
                         <th class="px-6 py-3 font-semibold text-right">Amount</th>
                         <th class="px-6 py-3 font-semibold text-right">Actions</th>
                     </tr>
@@ -58,7 +57,6 @@
                             <td class="px-6 py-4 text-ink-variant">{{ $sale->customer->name ?? 'Walk-in Customer' }}</td>
                             <td class="px-6 py-4 text-outline">{{ $sale->sale_date->format('M j, Y') }}</td>
                             <td class="px-6 py-4 text-ink-variant">{{ ucwords(str_replace('_', ' ', $sale->payment_method)) }}</td>
-                            <td class="px-6 py-4"><x-status-badge :status="$sale->payment_status" /></td>
                             <td class="px-6 py-4 text-right tabular font-semibold text-ink">{{ $settings->currency }} {{ number_format($sale->total_amount, 0) }}</td>
                             <td class="px-6 py-4">
                                 <div class="flex items-center justify-end gap-1">
@@ -67,7 +65,9 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="px-6 py-10 text-center text-outline">No sales recorded yet.</td></tr>
+                        <tr><td colspan="6" class="px-6 py-10 text-center text-outline">
+                            {{ request()->hasAny(['search', 'from', 'to']) ? 'No sales match your filters.' : 'No sales recorded yet.' }}
+                        </td></tr>
                     @endforelse
                 </tbody>
             </table>

@@ -9,8 +9,7 @@
     <div class="flex flex-col sm:flex-row sm:items-stretch sm:justify-between gap-4">
         <form method="GET"
             class="bg-white rounded-bento border border-outline-variant shadow-bento p-4 flex items-center gap-4 w-full sm:flex-1 min-w-0">
-            <x-search-bar name="search" placeholder="Search products..."
-                        x-data @input.debounce.400ms="$event.target.form.requestSubmit()" />
+            <x-search-bar name="search" placeholder="Search products..."/>
         </form>
 
         <a href="{{ route('products.create') }}"
@@ -20,7 +19,7 @@
     </div>
 
     {{-- ==================== RUN A PRODUCTION BATCH ==================== --}}
-    <div class="space-y-6 mt-8">
+    <div id="live-results" class="space-y-6 mt-8">
     <div>
         <h2 class="font-serif text-xl font-semibold text-ink mb-1">Products &amp; Production Batches</h2>
             <p class="text-sm text-outline">Manage each product's status and recipe, and run a production batch — stock is deducted and produced automatically.</p>
@@ -32,7 +31,6 @@
                     $recipe = $product->rawMaterials->map(fn($i) => [
                         'id' => $i->id, 'name' => $i->name, 'unit' => $i->unit,
                         'qty' => (float) $i->pivot->quantity_required,
-                        'cost' => $i->currentCostPerUnit(),
                         'available' => (float) $i->stock_qty,
                     ]);
                 @endphp
@@ -41,16 +39,16 @@
                         multiplier: 1,
                         recipe: {{ $recipe->toJson() }},
                         outputPerBatch: {{ $product->output_qty_per_batch }},
-                        get batchCost() { return this.recipe.reduce((sum, r) => sum + (r.qty * this.multiplier * r.cost), 0) },
-                        get outputQty() { return this.outputPerBatch * this.multiplier },
-                        get costPerUnit() { return this.outputQty > 0 ? this.batchCost / this.outputQty : 0 },
-                        get canRun() { return this.recipe.length > 0 && this.recipe.every(r => (r.qty * this.multiplier) <= r.available) }
+                        need(r) { return Math.round(r.qty * (Number(this.multiplier) || 0) * 100) / 100 },
+                        get validMultiplier() { return Number(this.multiplier) >= 0.1 },
+                        get outputQty() { return Math.round(this.outputPerBatch * (Number(this.multiplier) || 0) * 100) / 100 },
+                        get canRun() { return this.validMultiplier && this.recipe.length > 0 && this.outputQty > 0 && this.recipe.every(r => this.need(r) > 0 && this.need(r) <= r.available) }
                      }">
                     <div class="p-6 pb-0">
                         <div class="flex items-start justify-between mb-4 gap-3">
                             <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold tracking-wide bg-forest-50 text-forest-700 border border-forest-300/40 uppercase">
                                 <i data-lucide="flask-conical" class="h-3 w-3"></i>
-                                {{ number_format($product->output_qty_per_batch, 0) }} {{ $product->unit }} manufactured
+                                {{ (float) $product->output_qty_per_batch }} {{ $product->unit }} manufactured
                             </span>
                             <div class="flex items-center gap-1 shrink-0">
                                 <x-toggle-switch :action="route('products.toggle', $product)" :active="$product->is_active" />
@@ -66,29 +64,18 @@
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-clay-container text-clay">Inactive</span>
                             @endif
                         </div>
-                        <p class="text-xs text-outline mb-4">Sells at {{ $settings->currency }} {{ number_format($product->selling_price, 0) }}/{{ $product->unit }}</p>
+                        <p class="text-xs text-outline mb-4">Sells at {{ $settings->currency }} {{ number_format($product->selling_price, 2) }}/{{ $product->unit }}</p>
 
                         <div class="flex flex-wrap gap-2 mb-5">
                             <span class="inline-flex items-center gap-1.5 rounded-control bg-surface-container-low border border-outline-variant px-3 py-1.5 text-xs text-ink-variant">
                                 <i data-lucide="ruler" class="h-3.5 w-3.5"></i> {{ $product->unit }}
                             </span>
                             <span class="inline-flex items-center gap-1.5 rounded-control bg-surface-container-low border border-outline-variant px-3 py-1.5 text-xs text-ink-variant">
-                                <i data-lucide="boxes" class="h-3.5 w-3.5"></i> {{ number_format($product->stock_qty, 1) }} {{ $product->unit }} in stock
+                                <i data-lucide="boxes" class="h-3.5 w-3.5"></i> {{ number_format($product->stock_qty, 2) }} {{ $product->unit }} in stock
                             </span>
                             <span class="inline-flex items-center gap-1.5 rounded-control bg-surface-container-low border border-outline-variant px-3 py-1.5 text-xs text-ink-variant">
-                                <i data-lucide="flask-conical" class="h-3.5 w-3.5"></i> {{ number_format($product->output_qty_per_batch, 1) }} {{ $product->unit }} / batch
+                                <i data-lucide="flask-conical" class="h-3.5 w-3.5"></i> {{ (float) $product->output_qty_per_batch }} {{ $product->unit }} / batch
                             </span>
-                        </div>
-                    </div>
-
-                    <div class="px-6 grid grid-cols-2 gap-3 mb-5">
-                        <div class="rounded-control bg-surface-container-low border border-outline-variant p-4">
-                            <p class="text-[11px] font-semibold text-outline uppercase tracking-wide mb-1">Batch Cost</p>
-                            <p class="font-serif text-xl font-semibold text-ink tabular">{{ $settings->currency }} <span x-text="batchCost.toFixed(0)"></span></p>
-                        </div>
-                        <div class="rounded-control bg-forest-50 border border-forest-300/30 p-4">
-                            <p class="text-[11px] font-semibold text-forest-700 uppercase tracking-wide mb-1">Live Cost / Unit</p>
-                            <p class="font-serif text-xl font-semibold text-forest-700 tabular">{{ $settings->currency }} <span x-text="costPerUnit.toFixed(2)"></span></p>
                         </div>
                     </div>
 
@@ -100,12 +87,12 @@
                             <ul class="space-y-2">
                                 <template x-for="r in recipe" :key="r.id">
                                     <li class="flex items-center justify-between text-sm rounded-control px-3 py-2"
-                                        :class="(r.qty * multiplier) > r.available ? 'bg-clay-container' : 'bg-surface-container-low'">
+                                        :class="need(r) > r.available ? 'bg-clay-container' : 'bg-surface-container-low'">
                                         <span class="text-ink font-medium" x-text="r.name"></span>
                                         <span class="text-ink-variant">
-                                            <span x-text="(r.qty * multiplier).toFixed(2)"></span> <span x-text="r.unit"></span>
+                                            <span x-text="need(r).toFixed(2)"></span> <span x-text="r.unit"></span>
                                             <span class="text-outline mx-1">/</span>
-                                            <span :class="(r.qty * multiplier) > r.available ? 'text-clay font-semibold' : 'text-outline'" x-text="r.available.toFixed(1) + ' avail.'"></span>
+                                            <span :class="need(r) > r.available ? 'text-clay font-semibold' : 'text-outline'" x-text="r.available.toFixed(2) + ' avail.'"></span>
                                         </span>
                                     </li>
                                 </template>
@@ -119,19 +106,20 @@
                             <div class="flex items-center gap-3 pt-4">
                                 <div class="flex-1">
                                     <label class="block text-[11px] font-semibold text-outline uppercase tracking-wide mb-1.5">Batch Multiplier</label>
-                                    <input type="number" step="0.1" min="0.1" name="multiplier" x-model.number="multiplier"
+                                    <input type="number" step="0.01" min="0.1" name="multiplier" required x-model.number="multiplier"
                                            class="w-full rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
                                 </div>
                                 <div class="flex-1 text-right">
                                     <p class="text-[11px] font-semibold text-outline uppercase tracking-wide mb-1.5">Output</p>
-                                    <p class="font-semibold text-ink tabular"><span x-text="outputQty.toFixed(1)"></span> {{ $product->unit }}</p>
+                                    <p class="font-semibold text-ink tabular"><span x-text="outputQty.toFixed(2)"></span> {{ $product->unit }}</p>
                                 </div>
                             </div>
                             <button type="submit" :disabled="!canRun"
                                     class="w-full mt-4 inline-flex items-center justify-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 disabled:bg-outline-variant disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-3 shadow-bento-sm transition">
                                 <i data-lucide="play-circle" class="h-4 w-4"></i> Run Batch Production
                             </button>
-                            <p x-show="!canRun" class="text-xs text-clay mt-2 text-center">Not enough raw material stock for this multiplier.</p>
+                            <p x-show="!validMultiplier" class="text-xs text-clay mt-2 text-center">Enter a multiplier of 0.1 or more.</p>
+                            <p x-show="validMultiplier && !canRun" class="text-xs text-clay mt-2 text-center">This multiplier is too small, or there is not enough raw material stock.</p>
                         </form>
                     @else
                         <div class="px-6 pb-6 mt-auto pt-4 border-t border-outline-variant">
@@ -156,7 +144,9 @@
         </div>
 
         <div class="px-6 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-outline-variant">
-            <form method="GET" class="flex flex-col sm:flex-row gap-3 w-full sm:max-w-lg">
+            <form method="GET" x-data
+                @submit="$el.querySelector('[name=search]').value = new URLSearchParams(location.search).get('search') || ''"
+                class="flex flex-col sm:flex-row gap-3 w-full sm:max-w-lg">
                 <input type="hidden" name="search" value="{{ request('search') }}">
                 <input type="date" name="batch_from" value="{{ request('batch_from') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
                 <input type="date" name="batch_to" value="{{ request('batch_to') }}" class="rounded-control border border-outline-variant px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700">
@@ -177,8 +167,6 @@
                         <th class="px-6 py-3 font-semibold">Product</th>
                         <th class="px-6 py-3 font-semibold">Multiplier</th>
                         <th class="px-6 py-3 font-semibold">Output</th>
-                        <th class="px-6 py-3 font-semibold">Batch Cost</th>
-                        <th class="px-6 py-3 font-semibold">Cost / Unit</th>
                         <th class="px-6 py-3 font-semibold">Date</th>
                     </tr>
                 </thead>
@@ -186,14 +174,16 @@
                     @forelse($batchHistory as $batch)
                         <tr class="hover:bg-surface-container-low transition">
                             <td class="px-6 py-3 font-medium text-ink">{{ $batch->product->name ?? 'Deleted product' }}</td>
-                            <td class="px-6 py-3 text-outline">{{ $batch->multiplier }}x</td>
-                            <td class="px-6 py-3 text-ink-variant tabular">{{ number_format($batch->output_qty, 1) }}</td>
-                            <td class="px-6 py-3 text-ink font-semibold tabular">{{ $settings->currency }} {{ number_format($batch->batch_cost, 0) }}</td>
-                            <td class="px-6 py-3 text-ink-variant tabular">{{ $settings->currency }} {{ number_format($batch->cost_per_unit, 2) }}</td>
+                            <td class="px-6 py-3 text-outline">{{ (float) $batch->multiplier }}x</td>
+                            <td class="px-6 py-3 text-ink-variant tabular">{{ number_format($batch->output_qty, 2) }}</td>
                             <td class="px-6 py-3 text-outline">{{ $settings->localize($batch->created_at)->format('M j, g:i A') }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-6 py-8 text-center text-outline">No batches run yet.</td></tr>
+                        <tr>
+                            <td colspan="4" class="px-6 py-6 text-center text-sm text-outline">
+                                {{ request()->filled('batch_from') || request()->filled('batch_to') ? 'No batches in this date range.' : 'No batches run yet. Run your first batch from a product above.' }}
+                            </td>
+                        </tr>
                     @endforelse
                 </tbody>
             </table>

@@ -11,16 +11,9 @@ return new class extends Migration
         Schema::create('customers', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('phone')->nullable();
-            $table->string('email')->nullable();
-            $table->text('address')->nullable();
-            // RECOMMENDATION: Remove this cached column if you always calculate from transactions
+            $table->string('phone')->unique();
             $table->decimal('balance', 12, 2)->default(0);
             $table->boolean('is_daily_customer')->default(false);
-            // FIXED: renamed 'ingredient' to 'raw_material'
-            $table->string('daily_item_type', 20)->nullable();   // 'product' or 'raw_material'
-            $table->unsignedBigInteger('daily_item_id')->nullable();
-            $table->decimal('daily_quantity', 12, 2)->nullable();
             $table->timestamps();
         });
     }

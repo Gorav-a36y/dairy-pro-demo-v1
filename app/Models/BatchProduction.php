@@ -8,8 +8,15 @@ class BatchProduction extends Model
 {
     protected $fillable = [
         'product_id', 'user_id', 'multiplier', 'output_qty',
-        'batch_cost', 'cost_per_unit', 'status', 'notes',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'multiplier' => 'decimal:2',
+            'output_qty' => 'decimal:2',
+        ];
+    }
 
     public function product()
     {

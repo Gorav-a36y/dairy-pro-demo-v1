@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\BatchProduction;
 use App\Models\Product;
 use App\Models\RawMaterial;
-use App\Models\StockMovement;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +13,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BatchProductionController extends Controller
 {
+    /** Largest value that fits in the decimal(12,2) stock / output columns. */
+    private const MAX_AMOUNT = 9999999999.99;
+
     // NOTE: index() was removed — Batch Production is no longer a separate
     // page. Running a batch and viewing recent batch history both now live
     // on the Products page (see ProductController::index and
@@ -22,80 +25,67 @@ class BatchProductionController extends Controller
     public function store(Request $request, Product $product)
     {
         $data = $request->validate([
-            'multiplier' => 'required|numeric|min:0.1',
-            'notes' => 'nullable|string|max:500',
+            'multiplier' => 'required|numeric|min:0.1|max:99999.99',
         ]);
 
-        // FIXED: was ->load('ingredients')
-        $product->load('rawMaterials');
+        $multiplier = round((float) $data['multiplier'], 2);
 
-        if ($product->rawMaterials->isEmpty()) {
-            return back()->with('error', 'This product has no recipe. Add required raw materials first.');
-        }
-
-        // Quick check up front for a fast, friendly error message
-        foreach ($product->rawMaterials as $rawMaterial) {
-            $needed = (float) $rawMaterial->pivot->quantity_required * (float) $data['multiplier'];
-            if ($needed > (float) $rawMaterial->stock_qty) {
-                return back()->with('error', "Not enough {$rawMaterial->name} in stock. Needed: {$needed} {$rawMaterial->unit}, Available: {$rawMaterial->stock_qty} {$rawMaterial->unit}.");
-            }
+        if (!$product->is_active) {
+            return back()->with('error', "{$product->name} is inactive. Turn it on before running a batch.");
         }
 
         try {
-            $batch = DB::transaction(function () use ($product, $data) {
-                $batchCost = 0.0;
+            $batch = DB::transaction(function () use ($product, $multiplier) {
+                // Read the recipe inside the transaction so we never use a stale one.
+                $recipe = $product->rawMaterials()->get();
 
-                // Re-fetch with a lock inside the transaction so two simultaneous
-                // batch runs can't both pass the stock check and oversell
-                $lockedMaterials = RawMaterial::whereIn('id', $product->rawMaterials->pluck('id'))
+                if ($recipe->isEmpty()) {
+                    throw new \RuntimeException('This product has no recipe. Add required raw materials first.');
+                }
+
+                // Lock the raw materials so two simultaneous batch runs can't
+                // both pass the stock check and use the same stock twice.
+                $materials = RawMaterial::whereIn('id', $recipe->pluck('id'))
                     ->lockForUpdate()
                     ->get()
                     ->keyBy('id');
 
-                foreach ($product->rawMaterials as $rawMaterial) {
-                    $locked = $lockedMaterials[$rawMaterial->id];
-                    $needed = round((float) $rawMaterial->pivot->quantity_required * (float) $data['multiplier'], 2);
+                // 1) Check everything first. Nothing is written until all checks pass.
+                $lines = [];
+                foreach ($recipe as $item) {
+                    $material = $materials[$item->id];
+                    $needed = round((float) $item->pivot->quantity_required * $multiplier, 2);
 
-                    if ($needed > (float) $locked->stock_qty) {
-                        throw new \RuntimeException("Not enough {$locked->name} in stock.");
+                    if ($needed <= 0 || $needed > self::MAX_AMOUNT) {
+                        throw new \RuntimeException("This multiplier is too small or too large for {$material->name}.");
                     }
 
-                    // FIXED: was (float) $ingredient->cost_per_unit
-                    $batchCost += $needed * $locked->currentCostPerUnit();
+                    if ($needed > (float) $material->stock_qty) {
+                        throw new \RuntimeException("Not enough {$material->name} in stock. Needed: {$needed} {$material->unit}, Available: {$material->stock_qty} {$material->unit}.");
+                    }
 
-                    $locked->decrement('stock_qty', $needed);
-
-                    StockMovement::create([
-                        'item_type' => 'raw_material', // FIXED: was 'ingredient'
-                        'item_id' => $locked->id,
-                        'direction' => 'out',
-                        'quantity' => $needed,
-                        'reason' => "Used in batch production of {$product->name}",
-                    ]);
+                    $lines[] = [$material, $needed];
                 }
 
-                $outputQty = round((float) $product->output_qty_per_batch * (float) $data['multiplier'], 2);
-                $costPerUnit = $outputQty > 0 ? round($batchCost / $outputQty, 2) : 0;
+                $outputQty = round((float) $product->output_qty_per_batch * $multiplier, 2);
 
+                if ($outputQty <= 0 || $outputQty > self::MAX_AMOUNT) {
+                    throw new \RuntimeException('This multiplier makes an output that is too small or too large.');
+                }
+
+                // 2) Deduct the raw materials.
+                foreach ($lines as [$material, $needed]) {
+                    $material->decrement('stock_qty', $needed);
+                }
+
+                // 3) Add the finished product to stock.
                 $product->increment('stock_qty', $outputQty);
-
-                StockMovement::create([
-                    'item_type' => 'product',
-                    'item_id' => $product->id,
-                    'direction' => 'in',
-                    'quantity' => $outputQty,
-                    'reason' => 'Batch production output',
-                ]);
 
                 return BatchProduction::create([
                     'product_id' => $product->id,
                     'user_id' => Auth::id(),
-                    'multiplier' => $data['multiplier'],
+                    'multiplier' => $multiplier,
                     'output_qty' => $outputQty,
-                    'batch_cost' => round($batchCost, 2),
-                    'cost_per_unit' => $costPerUnit,
-                    'status' => 'completed',
-                    'notes' => $data['notes'] ?? null,
                 ]);
             });
         } catch (\RuntimeException $e) {
@@ -103,11 +93,13 @@ class BatchProductionController extends Controller
         }
 
         return redirect()->route('products.index')
-            ->with('success', "Batch complete: produced {$batch->output_qty} {$product->unit} of {$product->name} for Rs. {$batch->batch_cost}.");
+            ->with('success', "Batch complete: produced {$batch->output_qty} {$product->unit} of {$product->name}.");
     }
 
     public function exportCsv(Request $request)
     {
+        $settings = Setting::current();
+
         $batches = BatchProduction::with('product')
             ->when(
                 !empty($request->get('from')),
@@ -127,18 +119,17 @@ class BatchProductionController extends Controller
             'Content-Disposition' => "attachment; filename=\"$filename\"",
         ];
 
-        $callback = function () use ($batches) {
+        $callback = function () use ($batches, $settings) {
             $file = fopen('php://output', 'w');
-            fputcsv($file, ['Product', 'Multiplier', 'Output', 'Batch Cost', 'Cost / Unit', 'Date']);
+            fputcsv($file, ['Product', 'Multiplier', 'Output', 'Date']);
 
+            // Plain numbers (no thousands commas) so spreadsheets can calculate with them.
             foreach ($batches as $batch) {
                 fputcsv($file, [
                     $batch->product->name ?? 'Deleted product',
-                    $batch->multiplier . 'x',
-                    number_format($batch->output_qty, 1),
-                    number_format($batch->batch_cost, 0),
-                    number_format($batch->cost_per_unit, 2),
-                    $batch->created_at->format('M j, g:i A'),
+                    (float) $batch->multiplier,
+                    (float) $batch->output_qty,
+                    $settings->localize($batch->created_at)->format('M j, g:i A'),
                 ]);
             }
 

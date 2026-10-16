@@ -9,11 +9,15 @@ use App\Models\Supplier;
 use App\Models\SupplierTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Services\InvoiceNumberGenerator;
 
 class MilkCollectionController extends Controller
 {
+    /** Largest value that fits in a decimal(12,2) column. */
+    private const MAX_AMOUNT = '9999999999.99';
+
     public function index(Request $request)
     {
         $collections = MilkCollection::with('supplier', 'rawMaterial')
@@ -44,8 +48,8 @@ class MilkCollectionController extends Controller
             ->whereYear('collected_at', now()->year)
             ->sum('total_amount');
 
-        $suppliers = Supplier::where('is_active', true)
-            ->orderBy('name')
+        // Suppliers no longer have an is_active column.
+        $suppliers = Supplier::orderBy('name')
             ->get()
             ->map(fn ($supplier) => [
                 'id' => $supplier->id,
@@ -53,13 +57,15 @@ class MilkCollectionController extends Controller
                 'sublabel' => $supplier->phone,
             ]);
 
-        $rawMaterials = RawMaterial::orderBy('name')
+        $rawMaterials = RawMaterial::where('is_active', true)
+            ->orderBy('name')
             ->get()
             ->map(fn ($rawMaterial) => [
                 'id' => $rawMaterial->id,
                 'label' => $rawMaterial->name,
                 'sublabel' => $rawMaterial->unit,
                 'unit' => $rawMaterial->unit,
+                'is_milk' => (bool) $rawMaterial->is_milk,
             ]);
 
         $paymentMethods = PaymentMethod::active()->ordered()->get();
@@ -79,62 +85,97 @@ class MilkCollectionController extends Controller
     {
         $data = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
-            'raw_material_id' => 'required|exists:raw_materials,id',
-            'quantity' => 'required|numeric|min:0.01',
-            'purchase_price' => 'required|numeric|min:0',
-            'fat' => 'nullable|numeric|min:0|max:100',
-            'snf' => 'nullable|numeric|min:0|max:100',
-            'shift' => 'required|in:' . implode(',', MilkCollection::SHIFTS),
-            'paid_amount' => 'nullable|numeric|min:0',
-            'payment_method' => 'required|in:' . implode(',', PaymentMethod::activeCodes()),
+            'raw_material_id' => [
+                'required',
+                Rule::exists('raw_materials', 'id')->where('is_active', true),
+            ],
+            'quantity' => ['required', 'numeric', 'min:0.01', 'decimal:0,2', 'max:' . self::MAX_AMOUNT],
+            // A collection with no purchase cost is not a valid purchase. It
+            // would create a zero total and could incorrectly pass payment
+            // validation when cash given is also zero.
+            'purchase_price' => ['required', 'numeric', 'min:0.01', 'decimal:0,2', 'max:' . self::MAX_AMOUNT],
+            'fat' => ['nullable', 'numeric', 'min:0', 'max:100', 'decimal:0,2'],
+            'snf' => ['nullable', 'numeric', 'min:0', 'max:100', 'decimal:0,2'],
+            'shift' => ['required', Rule::in(MilkCollection::SHIFTS)],
+            'paid_amount' => ['required', 'numeric', 'min:0', 'decimal:0,2', 'max:' . self::MAX_AMOUNT],
+            // Only ACTIVE payment methods are accepted, matched by their unique code.
+            'payment_method' => ['required', 'string', Rule::exists('payment_methods', 'code')->where('is_active', true)],
             'notes' => 'nullable|string|max:500',
             'print' => 'nullable|boolean',
-        ], [], [
+        ], [
+            'payment_method.exists' => 'The selected payment method is not available.',
+            'paid_amount.required' => 'Cash given is required. Enter 0 for Khata.',
+            'paid_amount.min' => 'Cash given cannot be negative.',
+            'paid_amount.decimal' => 'Cash given can have at most 2 decimal places.',
+            'quantity.decimal' => 'Quantity can have at most 2 decimal places.',
+            'purchase_price.decimal' => 'Purchase price can have at most 2 decimal places.',
+        ], [
             'supplier_id' => 'Supplier',
             'raw_material_id' => 'Raw Material',
             'quantity' => 'Quantity',
             'purchase_price' => 'Purchase Price',
-            'paid_amount' => 'Paid Amount',
+            'paid_amount' => 'Cash Given',
             'payment_method' => 'Payment Method',
         ]);
 
         $rawMaterial = RawMaterial::findOrFail($data['raw_material_id']);
 
-        $totalAmount = round($data['quantity'] * $data['purchase_price'], 2);
-        $submittedPaidAmount = round($data['paid_amount'] ?? 0, 2);
+        // Money is compared in whole cents so there is no floating-point drift.
+        $totalAmount = round((float) $data['quantity'] * (float) $data['purchase_price'], 2);
+
+        if ($totalAmount <= 0) {
+            return back()->withInput()->withErrors([
+                'purchase_price' => 'Purchase price must produce a total greater than 0.',
+            ]);
+        }
+
+        if ($totalAmount > (float) self::MAX_AMOUNT) {
+            return back()->withInput()->withErrors([
+                'purchase_price' => 'The total amount is too large.',
+            ]);
+        }
+
+        $totalCents = (int) round($totalAmount * 100);
+        $submittedCents = (int) round((float) $data['paid_amount'] * 100);
+        $submittedPaidAmount = $submittedCents / 100;
 
         $isKhata = $data['payment_method'] === PaymentMethod::KHATA_CODE;
         $isPartialKhata = $data['payment_method'] === PaymentMethod::PARTIAL_KHATA_CODE;
 
+        $reject = fn (string $message) => back()->withInput()->withErrors(['paid_amount' => $message]);
+
         if ($isKhata) {
+            // Khata: nothing is paid now.
+            if ($submittedCents !== 0) {
+                return $reject('Cash given must be 0 for Khata.');
+            }
+
             $paidAmount = 0.0;
             $amountGiven = null;
             $returnAmount = 0.0;
         } elseif ($isPartialKhata) {
-            if ($submittedPaidAmount > $totalAmount) {
-                return back()->withInput()->withErrors([
-                    'paid_amount' => 'Paid amount cannot be greater than the total amount.',
-                ]);
+            // Partial Khata: more than 0 and strictly less than the total.
+            if ($submittedCents <= 0) {
+                return $reject('Cash given must be greater than 0 for Partial Khata. If nothing is being paid, select Khata instead.');
             }
 
-            if ($submittedPaidAmount >= $totalAmount) {
-                return back()->withInput()->withErrors([
-                    'paid_amount' => 'Paid amount cannot equal the total amount for Partial Khata. If the full amount is being paid, select Cash (or another payment method) instead.',
-                ]);
+            if ($submittedCents >= $totalCents) {
+                return $reject('Cash given must be less than the total amount for Partial Khata. If the full amount is being paid, select Cash (or another payment method) instead.');
             }
 
             $paidAmount = $submittedPaidAmount;
-            $amountGiven = null;
+            // Partial Khata still includes an immediate cash payment. Keep it
+            // separately from paid_amount so history and receipts can show the
+            // actual cash handed over.
+            $amountGiven = $submittedPaidAmount;
             $returnAmount = 0.0;
         } else {
-            // Cash or any other active method — must at least cover the bill.
+            // Cash or any other active method — must cover the whole bill.
             // amount_given keeps the real cash handed over; paid_amount stays at
             // the total so balanceDue() and Khata logic never see a false credit;
             // return_amount is the change given back.
-            if ($submittedPaidAmount + 0.01 < $totalAmount) {
-                return back()->withInput()->withErrors([
-                    'paid_amount' => 'Amount given cannot be less than the total amount for this payment method.',
-                ]);
+            if ($submittedCents < $totalCents) {
+                return $reject('Cash given cannot be less than the total amount for this payment method.');
             }
 
             $amountGiven = $submittedPaidAmount;
@@ -144,11 +185,12 @@ class MilkCollectionController extends Controller
 
         $paymentMethodName = PaymentMethod::where('code', $data['payment_method'])->value('name') ?? ucfirst($data['payment_method']);
 
-        // Only trust fat/snf if the raw material is actually a liquid unit —
-        // this blocks a bypassed frontend from attaching fake milk-quality data to eggs etc.
-        $isLiquid = MilkCollection::isLiquidUnit($rawMaterial->unit);
-        $fat = $isLiquid ? ($data['fat'] ?? null) : null;
-        $snf = $isLiquid ? ($data['snf'] ?? null) : null;
+        // Fat / SNF / Total Solids are only kept when the raw material is milk.
+        // This blocks a bypassed frontend from attaching milk-quality data to eggs etc.
+        // All three are optional, even for milk.
+        $isMilk = (bool) $rawMaterial->is_milk;
+        $fat = $isMilk ? ($data['fat'] ?? null) : null;
+        $snf = $isMilk ? ($data['snf'] ?? null) : null;
         $totalSolids = ($fat !== null && $snf !== null) ? round($fat + $snf, 2) : null;
 
         $collection = DB::transaction(function () use ($data, $rawMaterial, $totalAmount, $paidAmount, $amountGiven, $returnAmount, $fat, $snf, $totalSolids, $paymentMethodName) {
@@ -175,8 +217,10 @@ class MilkCollectionController extends Controller
                 'notes'            => $data['notes'] ?? null,
             ]);
 
+            // Inventory: stock goes up by the collected quantity.
+            // (raw_materials has no cost_per_unit column — cost comes from
+            // RawMaterial::currentCostPerUnit(), calculated from collections.)
             $rawMaterial->increment('stock_qty', $data['quantity']);
-            $rawMaterial->update(['cost_per_unit' => $data['purchase_price']]);
 
             $remaining = round($totalAmount - $paidAmount, 2);
 
@@ -188,7 +232,7 @@ class MilkCollectionController extends Controller
                     'amount'             => $remaining,
                     'invoice_no'         => $purchaseInvoiceNo,
                     'reference'          => 'Milk Collection #' . $collection->id,
-                    'notes'              => $rawMaterial->name . ' — ' . $data['quantity'] . ' ' . $rawMaterial->unit,
+                    'notes'              => $rawMaterial->name . ' - ' . $data['quantity'] . ' ' . $rawMaterial->unit,
                     'transaction_date'   => now()->toDateString(),
                 ]);
             }
@@ -237,30 +281,35 @@ class MilkCollectionController extends Controller
         ];
 
         $callback = function () use ($collections) {
-        $file = fopen('php://output', 'w');
-        fputcsv($file, ['Supplier', 'Raw Material', 'Date & Time', 'Shift', 'Quantity', 'Fat (%)', 'SNF (%)', 'TS (%)', 'Paid', 'Total']);
+            $file = fopen('php://output', 'w');
+            // Tell Excel and other spreadsheet applications that this is UTF-8.
+            fwrite($file, "\xEF\xBB\xBF");
+            fputcsv($file, ['Supplier', 'Raw Material', 'Date & Time', 'Shift', 'Quantity', 'Fat (%)', 'SNF (%)', 'TS (%)', 'Paid', 'Total']);
 
-        foreach ($collections as $collection) {
-            $fat = $collection->fat !== null ? number_format($collection->fat, 2) : '—';
-            $snf = $collection->snf !== null ? number_format($collection->snf, 2) : '—';
-            $ts  = $collection->total_solids !== null ? number_format($collection->total_solids, 2) : '—';
+            foreach ($collections as $collection) {
+                // Keep quality columns as plain numeric strings so Excel can
+                // read them as numbers. Empty means the value was not recorded.
+                $fat = $collection->fat !== null ? number_format((float) $collection->fat, 2, '.', '') : '';
+                $snf = $collection->snf !== null ? number_format((float) $collection->snf, 2, '.', '') : '';
+                $ts  = $collection->total_solids !== null ? number_format((float) $collection->total_solids, 2, '.', '') : '';
 
-            fputcsv($file, [
-                $collection->supplier->name ?? 'Unknown',
-                $collection->rawMaterial->name ?? 'Unknown',
-                $collection->collected_at->format('M j, Y g:i A'),
-                ucfirst($collection->shift),
-                number_format($collection->quantity, 2),
-                $fat,
-                $snf,
-                $ts,
-                number_format($collection->paid_amount, 0),
-                number_format($collection->total_amount, 0),
-            ]);
-        }
+                fputcsv($file, [
+                    $collection->supplier->name ?? 'Unknown',
+                    $collection->rawMaterial->name ?? 'Unknown',
+                    $collection->collected_at->format('M j, Y g:i A'),
+                    ucfirst($collection->shift),
+                    number_format($collection->quantity, 2),
+                    $fat,
+                    $snf,
+                    $ts,
+                    number_format($collection->paid_amount, 0),
+                    number_format($collection->total_amount, 0),
+                ]);
+            }
 
-        fclose($file);
-    };
+            fclose($file);
+        };
+
         return new StreamedResponse($callback, 200, $headers);
     }
 }

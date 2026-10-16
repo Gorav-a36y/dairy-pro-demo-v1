@@ -26,8 +26,10 @@ class ReportController extends Controller
         $totalInvoices  = $sales->count();
         $avgInvoiceValue = $totalInvoices ? round($totalRevenue / $totalInvoices, 2) : 0;
 
-        $cashSales    = (float) $sales->where('payment_status', Sale::STATUS_PAID)->sum('total_amount');
-        $creditSales  = (float) $sales->where('payment_status', Sale::STATUS_UNPAID)->sum('total_amount');
+        // A sale counts as credit when it was not fully paid at the time of sale.
+        $isCredit     = fn ($sale) => round((float) $sale->total_amount - (float) $sale->paid_amount, 2) > 0;
+        $cashSales    = (float) $sales->reject($isCredit)->sum('total_amount');
+        $creditSales  = (float) $sales->filter($isCredit)->sum('total_amount');
 
         /* ── Payment method breakdown ── */
         $paymentMethods = $sales->groupBy('payment_method')
@@ -187,7 +189,7 @@ class ReportController extends Controller
 
         $callback = function () use ($sales) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Invoice No', 'Date', 'Customer', 'Subtotal', 'Discount', 'Total', 'Paid', 'Payment Method', 'Status']);
+            fputcsv($handle, ['Invoice No', 'Date', 'Customer', 'Subtotal', 'Discount', 'Total', 'Paid', 'Payment Method']);
 
             foreach ($sales as $sale) {
                 fputcsv($handle, [
@@ -199,7 +201,6 @@ class ReportController extends Controller
                     $sale->total_amount,
                     $sale->paid_amount,
                     ucfirst($sale->payment_method),
-                    ucfirst($sale->payment_status),
                 ]);
             }
 

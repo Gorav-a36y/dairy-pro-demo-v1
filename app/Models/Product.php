@@ -47,27 +47,6 @@ class Product extends Model
             ->where('item_type', 'product');
     }
 
-    /** Cost of one base batch using current milk purchase prices. */
-    public function baseBatchCost(): float
-    {
-        $cost = 0.0;
-
-        foreach ($this->rawMaterials as $rawMaterial) {
-            $qtyRequired = (float) ($rawMaterial->pivot->quantity_required ?? 0);
-            $unitCost    = $rawMaterial->currentCostPerUnit(); // ← from milk collections
-            $cost += $qtyRequired * $unitCost;
-        }
-
-        return round($cost, 2);
-    }
-
-    public function baseCostPerUnit(): float
-    {
-        $output = (float) ($this->output_qty_per_batch ?: 1);
-
-        return round($this->baseBatchCost() / $output, 2);
-    }
-
     public function latestBatch()
     {
         return $this->batchProductions()->latest()->first();
