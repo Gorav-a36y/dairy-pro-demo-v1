@@ -178,7 +178,7 @@
             <div class="flex items-center gap-4">
                 <div class="hidden sm:flex items-center gap-2 text-xs text-outline bg-white border border-outline-variant rounded-full px-3 py-1.5">
                     <i data-lucide="calendar" class="h-3.5 w-3.5"></i>
-                    {{ now()->format('D, M j Y') }}
+                    {{ $settings->now()->format('D, M j Y') }}
                 </div>
                 @auth
                 <div class="flex items-center gap-2 pl-4 border-l border-outline-variant">
@@ -223,7 +223,7 @@
         </main>
 
         <footer class="px-4 lg:px-8 py-6 text-center text-xs text-outline border-t border-outline-variant print:hidden">
-            {{ $settings->dairy_name ?? 'DairyPro' }} &copy; {{ now()->year }} — Built by
+            {{ $settings->dairy_name ?? 'DairyPro' }} &copy; {{ $settings->now()->year }} — Built by
             <a href="{{ config('app.brand_url') }}" target="_blank" class="font-semibold text-ink-variant hover:text-forest-700">
                 <span class="text-ink">Gorav</span><span class="text-forest-700">AI</span>
             </a>

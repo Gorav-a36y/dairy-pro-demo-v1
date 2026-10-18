@@ -25,6 +25,7 @@ trait DairyTestHelpers
             'name'     => 'Test Owner',
             'email'    => 'owner' . uniqid() . '@example.com',
             'password' => bcrypt('password'),
+            'role'     => 'admin',
         ]));
 
         $this->actingAs($user);

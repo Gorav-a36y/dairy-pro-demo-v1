@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\RawMaterial;
 use App\Models\Waste;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -27,14 +28,16 @@ class WasteController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-        $todayCount = Waste::whereDate('wasted_at', today())->count();
+        $businessNow = Setting::current()->now();
 
-        $monthCount = Waste::whereMonth('wasted_at', now()->month)
-            ->whereYear('wasted_at', now()->year)
+        $todayCount = Waste::whereDate('wasted_at', $businessNow->toDateString())->count();
+
+        $monthCount = Waste::whereMonth('wasted_at', $businessNow->month)
+            ->whereYear('wasted_at', $businessNow->year)
             ->count();
 
-        $monthItems = Waste::whereMonth('wasted_at', now()->month)
-            ->whereYear('wasted_at', now()->year)
+        $monthItems = Waste::whereMonth('wasted_at', $businessNow->month)
+            ->whereYear('wasted_at', $businessNow->year)
             ->get(['item_type', 'item_id'])
             ->unique(fn ($w) => $w->item_type . '-' . $w->item_id)
             ->count();
@@ -48,19 +51,27 @@ class WasteController extends Controller
 
     public function store(Request $request)
     {
+        $businessToday = Setting::current()->now()->toDateString();
+
         $data = $request->validate([
             'item_key'  => 'required|string',
             'quantity'  => 'required|numeric|min:0.01',
-            'wasted_at' => 'required|date|before_or_equal:today',
+            'wasted_at' => 'required|date_format:Y-m-d',
             'note'      => 'nullable|string|max:500',
         ], [
-            'wasted_at.before_or_equal' => 'The waste date cannot be in the future.',
+            'wasted_at.date_format' => 'The waste date must be a valid date.',
         ], [
             'item_key'  => 'Raw Material / Product',
             'quantity'  => 'Waste Quantity',
             'wasted_at' => 'Date',
             'note'      => 'Note',
         ]);
+
+        if ($data['wasted_at'] > $businessToday) {
+            throw ValidationException::withMessages([
+                'wasted_at' => 'The waste date cannot be in the future.',
+            ]);
+        }
 
         // Empty or spaces-only note is saved as NULL
         $note = isset($data['note']) ? trim($data['note']) : null;
@@ -131,7 +142,7 @@ class WasteController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $filename = 'waste-history-' . now()->format('Y-m-d-H-i-s') . '.csv';
+        $filename = 'waste-history-' . Setting::current()->now()->format('Y-m-d-H-i-s') . '.csv';
 
         $headers = [
             'Content-Type' => 'text/csv; charset=UTF-8',
@@ -146,10 +157,10 @@ class WasteController extends Controller
                 fputcsv($file, [
                     $waste->wasted_at->format('M j, Y'),
                     $waste->isRawMaterial() ? 'Raw Material' : 'Product',
-                    $waste->item_name,
+                    $this->csvSafe($waste->item_name),
                     number_format($waste->quantity, 2),
-                    $waste->unit,
-                    $waste->note ?? '',
+                    $this->csvSafe($waste->unit),
+                    $this->csvSafe($waste->note ?? ''),
                 ]);
             }
 
@@ -157,6 +168,13 @@ class WasteController extends Controller
         };
 
         return new StreamedResponse($callback, 200, $headers);
+    }
+
+    private function csvSafe(?string $value): string
+    {
+        $value = (string) $value;
+
+        return preg_match('/^[=+\-@\t\r]/', $value) ? "'" . $value : $value;
     }
 
     private function combinedItemOptions()

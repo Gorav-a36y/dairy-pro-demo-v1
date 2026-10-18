@@ -9,7 +9,7 @@
     <div class="flex items-center justify-between">
         <div>
             <h2 class="font-serif text-lg font-semibold text-ink">
-                Today's Deliveries — {{ now()->format('F j, Y') }}
+                Today's Deliveries — {{ $settings->now()->format('F j, Y') }}
             </h2>
 
             <p class="text-sm text-outline">

@@ -4,22 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sign in — {{ $settings->dairy_name ?? 'DairyPro' }}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = { theme: { extend: {
-            fontFamily: { sans: ['Inter','ui-sans-serif'], serif: ['Playfair Display','ui-serif'] },
-            colors: {
-                surface: '#fbf9f5', ink: '#1b1c1a', 'ink-variant': '#4a4a4a', outline: '#737973', 'outline-variant': '#e5e4e0',
-                forest: { 50:'#eef4ef', 300:'#b4cdb8', 700:'#1b3022', 800:'#0f2317', 900:'#061b0e' },
-                clay: '#ba1a1a',
-            },
-            borderRadius: { bento: '1.5rem', control: '1rem' },
-        } } }
-    </script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
-    <style>body{font-family:'Inter',sans-serif} h1,h2,.font-serif{font-family:'Playfair Display',serif}</style>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="bg-forest-900 min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
     <div class="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-forest-700/30 blur-3xl"></div>
@@ -84,10 +69,9 @@
         </div>
 
         <p class="text-center text-xs text-forest-300/70 mt-8">
-            {{ $settings->dairy_name ?? 'DairyPro' }} &copy; {{ now()->year }} — Built by
+            {{ $settings->dairy_name ?? 'DairyPro' }} &copy; {{ $settings->now()->year }} — Built by
             <a href="{{ config('app.brand_url') }}" class="font-semibold"><span class="text-white">Gorav</span><span class="text-forest-300">AI</span></a>
         </p>
     </div>
-    <script>document.addEventListener('DOMContentLoaded', () => lucide.createIcons());</script>
 </body>
 </html>

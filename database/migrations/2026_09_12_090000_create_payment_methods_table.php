@@ -13,19 +13,17 @@ return new class extends Migration
             $table->id();
             $table->string('name');            // display label, e.g. "Cash"
             $table->string('code', 30)->unique(); // stored value, e.g. "cash"
-            // System methods (Khata, Partial Khata) always exist, are always
-            // active, and can't be deactivated or deleted — enforced in
-            // PaymentMethodController.
+            // Built-in methods (Cash, Khata, Partial Khata) always exist,
+            // stay active, and can't be deleted.
             $table->boolean('is_system')->default(false);
             $table->boolean('is_active')->default(true);
             $table->integer('sort_order')->default(0);
             $table->timestamps();
         });
 
-        // Built-in methods. Cash can be deactivated (or more added from
-        // Settings) but never deleted; Khata and Partial Khata are locked on.
+        // Built-in methods stay available; custom methods can be added in Settings.
         DB::table('payment_methods')->insert([
-            ['name' => 'Cash', 'code' => 'cash', 'is_system' => false, 'is_active' => true, 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'Cash', 'code' => 'cash', 'is_system' => true, 'is_active' => true, 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
             ['name' => 'Khata', 'code' => 'khata', 'is_system' => true, 'is_active' => true, 'sort_order' => 98, 'created_at' => now(), 'updated_at' => now()],
             ['name' => 'Partial Khata', 'code' => 'partial_khata', 'is_system' => true, 'is_active' => true, 'sort_order' => 99, 'created_at' => now(), 'updated_at' => now()],
         ]);

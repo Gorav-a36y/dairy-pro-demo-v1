@@ -28,6 +28,7 @@ class MilkCollectionTest extends TestCase
             'name'     => 'Test User',
             'email'    => 'test@example.com',
             'password' => bcrypt('password'),
+            'role'     => 'admin',
         ])));
 
         $this->supplier = Supplier::create(['name' => 'Test Farmer', 'phone' => '03001234567']);
@@ -286,11 +287,15 @@ class MilkCollectionTest extends TestCase
         $this->assertRejected($this->submit(['payment_method' => 'bank']), 'payment_method');
     }
 
-    public function test_cash_is_rejected_after_it_is_deactivated(): void
+    public function test_cash_cannot_be_deactivated_and_remains_available(): void
     {
-        DB::table('payment_methods')->where('code', 'cash')->update(['is_active' => false]);
+        $cashId = DB::table('payment_methods')->where('code', 'cash')->value('id');
 
-        $this->assertRejected($this->submit(), 'payment_method');
+        $this->patch(route('payment-methods.toggle', $cashId))
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseHas('payment_methods', ['code' => 'cash', 'is_active' => true]);
+        $this->submit()->assertSessionDoesntHaveErrors();
     }
 
     public function test_khata_is_rejected_if_it_is_inactive_in_the_database(): void

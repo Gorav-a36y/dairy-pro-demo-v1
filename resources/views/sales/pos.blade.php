@@ -195,7 +195,7 @@
         },
         // Step 1 — click / Enter lands here.
         submitSale(action) {
-            if (this.submitLocked || this.sent || !this.isValid) return;
+            if (this.submitLocked || this.sent || !this.canSubmit) return;
             this.submitLocked = true;   // a 2nd click or Enter is ignored from this moment
             this.savingAction = action;
             // Write directly to the field instead of a reactive binding, so the
@@ -244,7 +244,7 @@
             <div class="hidden sm:flex items-center gap-1.5 text-xs text-outline font-medium shrink-0 tabular"
                  x-data="liveClock('{{ $settings->timezone() }}')" x-init="start()">
                 <i data-lucide="clock" class="h-3.5 w-3.5"></i>
-                <span x-text="display">{{ $settings->localize(now())->format('M j, Y — g:i A') }}</span>
+                <span x-text="display">{{ $settings->now()->format('M j, Y — g:i A') }}</span>
             </div>
         </div>
         {{-- Products Grid --}}

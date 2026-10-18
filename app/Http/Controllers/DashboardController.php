@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CustomerTransaction;
 use App\Models\Product;
 use App\Models\Sale;
+use App\Models\Setting;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -12,7 +13,8 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        $today = Carbon::today();
+        $businessToday = Setting::current()->now();
+        $today = $businessToday->copy()->startOfDay();
 
         $todaySalesCount = Sale::whereDate('sale_date', $today)->count();
         $todayRevenue = Sale::whereDate('sale_date', $today)->sum('total_amount');
@@ -29,8 +31,8 @@ class DashboardController extends Controller
             0
         );
 
-        $trend = collect(range(6, 0))->map(function ($daysAgo) {
-            $date = Carbon::today()->subDays($daysAgo);
+        $trend = collect(range(6, 0))->map(function ($daysAgo) use ($businessToday) {
+            $date = $businessToday->copy()->subDays($daysAgo);
             $total = Sale::whereDate('sale_date', $date)->sum('total_amount');
 
             return [

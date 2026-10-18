@@ -42,6 +42,7 @@
             milkIds: {{ json_encode($rawMaterials->where('is_milk', true)->pluck('id')->values()) }},
             paymentMethod: '{{ $paymentMethods->firstWhere('code', 'cash')?->code ?? optional($paymentMethods->first())->code }}',
             paidAmount: 0,
+            isSubmitting: false,
             shift: (() => {
                 const h = new Date().getHours();
                 if (h >= 5 && h < 12) return 'morning';
@@ -83,6 +84,7 @@
                 return this.paidCents >= this.totalCents ? '' : 'Cash given cannot be less than the total.';
             },
             get showPaidError() { return this.paidError !== '' && this.quantity !== '' && this.purchasePrice !== '' },
+            get canSubmit() { return !this.isSubmitting && !this.paidError; },
 
             get totalSolids() {
                 if (this.fat === '' || this.snf === '') return '';
@@ -107,7 +109,8 @@
          }"
          class="bg-white rounded-bento border border-outline-variant shadow-bento p-8">
         <form method="POST" action="{{ route('milk-collections.store') }}"
-            @keydown.enter="if ($event.shiftKey) { $event.preventDefault(); $refs.printFlag.value = '1'; $el.requestSubmit(); } else if ($event.target.tagName !== 'TEXTAREA') { $event.preventDefault(); $refs.printFlag.value = '0'; $el.requestSubmit(); }"
+            @submit="if (isSubmitting || paidError) { $event.preventDefault(); return; } isSubmitting = true;"
+            @keydown.enter="if ($event.target.tagName !== 'TEXTAREA') { $event.preventDefault(); if ($event.repeat || isSubmitting || paidError) return; $refs.printFlag.value = $event.shiftKey ? '1' : '0'; $el.requestSubmit(); }"
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             @csrf
 
@@ -226,14 +229,24 @@
             <input type="hidden" name="print" x-ref="printFlag" value="0">
 
             <div class="sm:col-span-2 lg:col-span-3 flex items-center gap-3">
-                <button type="submit" @click="$refs.printFlag.value = '0'" :disabled="!!paidError"
+                <button type="submit" @click="$refs.printFlag.value = '0'" :disabled="!canSubmit"
                         class="inline-flex items-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 text-white text-sm font-semibold px-5 py-3 shadow-bento-sm transition disabled:bg-outline-variant disabled:text-outline disabled:cursor-not-allowed">
-                    <i data-lucide="save" class="h-4 w-4"></i> Save Collection
+                    <span x-show="!isSubmitting" class="inline-flex items-center gap-2">
+                        <i data-lucide="save" class="h-4 w-4"></i> Save Collection
+                    </span>
+                    <span x-show="isSubmitting" x-cloak class="inline-flex items-center gap-2">
+                        <span class="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin"></span> Saving...
+                    </span>
                     <span class="text-xs opacity-70 font-normal">(Enter)</span>
                 </button>
-                <button type="submit" @click="$refs.printFlag.value = '1'" :disabled="!!paidError"
+                <button type="submit" @click="$refs.printFlag.value = '1'" :disabled="!canSubmit"
                         class="inline-flex items-center gap-2 rounded-control border border-forest-700 text-forest-700 hover:bg-forest-50 text-sm font-semibold px-5 py-3 transition disabled:border-outline-variant disabled:text-outline disabled:cursor-not-allowed">
-                    <i data-lucide="printer" class="h-4 w-4"></i> Save &amp; Print
+                    <span x-show="!isSubmitting" class="inline-flex items-center gap-2">
+                        <i data-lucide="printer" class="h-4 w-4"></i> Save &amp; Print
+                    </span>
+                    <span x-show="isSubmitting" x-cloak class="inline-flex items-center gap-2">
+                        <span class="h-4 w-4 rounded-full border-2 border-forest-700/30 border-t-forest-700 animate-spin"></span> Saving...
+                    </span>
                     <span class="text-xs opacity-70 font-normal">(Shift+Enter)</span>
                 </button>
             </div>

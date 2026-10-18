@@ -14,6 +14,7 @@
           isMilk: {{ $isMilk ? 'true' : 'false' }},
           allRawMaterials: {{ json_encode($allRawMaterials ?? []) }},
           open: false,
+          submitting: false,
 
           get canBeMilk() {
               return ['Liter', 'Kilogram'].includes(this.unit);
@@ -39,6 +40,8 @@
           }
       }"
       x-init="unitChanged()"
+      @submit="if (submitting) { $event.preventDefault(); return; } submitting = true"
+      @pageshow.window="submitting = false"
       class="max-w-2xl">
     @csrf
     @if($isEdit) @method('PUT') @endif
@@ -178,7 +181,7 @@
     </div>
 
     <div class="flex items-center gap-3 mt-6">
-        <button type="submit" :disabled="!!exactMatch"
+        <button type="submit" :disabled="submitting || !!exactMatch"
                 class="inline-flex items-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 disabled:bg-outline-variant disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-3 shadow-bento-sm transition">
             <i data-lucide="save" class="h-4 w-4"></i> {{ $isEdit ? 'Update Raw Material' : 'Save Raw Material' }}
         </button>

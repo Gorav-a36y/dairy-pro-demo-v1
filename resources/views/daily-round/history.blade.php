@@ -322,7 +322,7 @@
                         </p>
 
                         <p class="text-ink text-right">
-                            {{ now()->format('M j, Y') }}
+                            {{ $settings->now()->format('M j, Y') }}
                         </p>
                     </div>
 
@@ -544,8 +544,8 @@
     @media print {
 
         @page {
-            size: auto;
-            margin: 12mm;
+            size: A4;
+            margin: 0;
         }
 
         html,

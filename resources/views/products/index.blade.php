@@ -37,6 +37,7 @@
                 <div class="bg-white rounded-bento border border-outline-variant shadow-bento overflow-hidden flex flex-col {{ !$product->is_active ? 'opacity-70' : '' }}"
                      x-data="{
                         multiplier: 1,
+                        submitting: false,
                         recipe: {{ $recipe->toJson() }},
                         outputPerBatch: {{ $product->output_qty_per_batch }},
                         need(r) { return Math.round(r.qty * (Number(this.multiplier) || 0) * 100) / 100 },
@@ -101,7 +102,10 @@
                     </div>
 
                     @if($product->is_active)
-                        <form method="POST" action="{{ route('batches.store', $product) }}" class="px-6 pb-6 mt-auto pt-2 border-t border-outline-variant">
+                        <form method="POST" action="{{ route('batches.store', $product) }}"
+                              @submit="if (submitting || !canRun) { $event.preventDefault(); return; } submitting = true"
+                              @pageshow.window="submitting = false"
+                              class="px-6 pb-6 mt-auto pt-2 border-t border-outline-variant">
                             @csrf
                             <div class="flex items-center gap-3 pt-4">
                                 <div class="flex-1">
@@ -114,9 +118,14 @@
                                     <p class="font-semibold text-ink tabular"><span x-text="outputQty.toFixed(2)"></span> {{ $product->unit }}</p>
                                 </div>
                             </div>
-                            <button type="submit" :disabled="!canRun"
+                            <button type="submit" :disabled="!canRun || submitting"
                                     class="w-full mt-4 inline-flex items-center justify-center gap-2 rounded-control bg-forest-700 hover:bg-forest-800 disabled:bg-outline-variant disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-3 shadow-bento-sm transition">
-                                <i data-lucide="play-circle" class="h-4 w-4"></i> Run Batch Production
+                                <span x-show="!submitting" class="inline-flex items-center gap-2">
+                                    <i data-lucide="play-circle" class="h-4 w-4"></i> Run Batch Production
+                                </span>
+                                <span x-show="submitting" x-cloak class="inline-flex items-center gap-2">
+                                    <span class="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin"></span> Running Batch...
+                                </span>
                             </button>
                             <p x-show="!validMultiplier" class="text-xs text-clay mt-2 text-center">Enter a multiplier of 0.1 or more.</p>
                             <p x-show="validMultiplier && !canRun" class="text-xs text-clay mt-2 text-center">This multiplier is too small, or there is not enough raw material stock.</p>

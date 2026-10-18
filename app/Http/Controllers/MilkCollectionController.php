@@ -7,8 +7,10 @@ use App\Models\PaymentMethod;
 use App\Models\RawMaterial;
 use App\Models\Supplier;
 use App\Models\SupplierTransaction;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Services\InvoiceNumberGenerator;
@@ -20,32 +22,47 @@ class MilkCollectionController extends Controller
 
     public function index(Request $request)
     {
+        $settings = Setting::current();
         $collections = MilkCollection::with('supplier', 'rawMaterial')
             ->when(
                 $request->filled('from'),
-                fn ($q) => $q->whereDate('collected_at', '>=', $request->from)
+                function ($q) use ($request, $settings) {
+                    [$from] = $settings->businessDayBounds(
+                        Carbon::createFromFormat('Y-m-d', $request->from, $settings->timezone())
+                    );
+
+                    return $q->where('collected_at', '>=', $from);
+                }
             )
             ->when(
                 $request->filled('to'),
-                fn ($q) => $q->whereDate('collected_at', '<=', $request->to)
+                function ($q) use ($request, $settings) {
+                    [, $to] = $settings->businessDayBounds(
+                        Carbon::createFromFormat('Y-m-d', $request->to, $settings->timezone())
+                    );
+
+                    return $q->where('collected_at', '<=', $to);
+                }
             )
             ->orderByDesc('collected_at')
             ->orderByDesc('id')
             ->paginate(10)
             ->withQueryString();
 
+        $businessNow = $settings->now();
+        [$todayStart, $todayEnd] = $settings->businessDayBounds($businessNow);
+        [$monthStart, $monthEnd] = $settings->businessMonthBounds($businessNow);
+
         $todayQty = MilkCollection::whereHas('rawMaterial', fn ($q) => $q->where('is_milk', true))
-            ->whereDate('collected_at', now()->toDateString())
+            ->whereBetween('collected_at', [$todayStart, $todayEnd])
             ->sum('quantity');
 
         $monthQty = MilkCollection::whereHas('rawMaterial', fn ($q) => $q->where('is_milk', true))
-            ->whereMonth('collected_at', now()->month)
-            ->whereYear('collected_at', now()->year)
+            ->whereBetween('collected_at', [$monthStart, $monthEnd])
             ->sum('quantity');
 
         $monthSpend = MilkCollection::whereHas('rawMaterial', fn ($q) => $q->where('is_milk', true))
-            ->whereMonth('collected_at', now()->month)
-            ->whereYear('collected_at', now()->year)
+            ->whereBetween('collected_at', [$monthStart, $monthEnd])
             ->sum('total_amount');
 
         // Suppliers no longer have an is_active column.
@@ -213,7 +230,7 @@ class MilkCollectionController extends Controller
                 'snf'              => $snf,
                 'total_solids'     => $totalSolids,
                 'shift'            => $data['shift'],
-                'collected_at'     => now(),
+                'collected_at'     => Setting::current()->now()->setTimezone(config('app.timezone')),
                 'notes'            => $data['notes'] ?? null,
             ]);
 
@@ -233,7 +250,7 @@ class MilkCollectionController extends Controller
                     'invoice_no'         => $purchaseInvoiceNo,
                     'reference'          => 'Milk Collection #' . $collection->id,
                     'notes'              => $rawMaterial->name . ' - ' . $data['quantity'] . ' ' . $rawMaterial->unit,
-                    'transaction_date'   => now()->toDateString(),
+                    'transaction_date'   => Setting::current()->now()->toDateString(),
                 ]);
             }
 
@@ -260,20 +277,33 @@ class MilkCollectionController extends Controller
 
     public function exportCsv(Request $request)
     {
+        $settings = Setting::current();
         $collections = MilkCollection::with('supplier', 'rawMaterial')
             ->when(
                 !empty($request->get('from')),
-                fn ($q) => $q->whereDate('collected_at', '>=', $request->get('from'))
+                function ($q) use ($request, $settings) {
+                    [$from] = $settings->businessDayBounds(
+                        Carbon::createFromFormat('Y-m-d', $request->get('from'), $settings->timezone())
+                    );
+
+                    return $q->where('collected_at', '>=', $from);
+                }
             )
             ->when(
                 !empty($request->get('to')),
-                fn ($q) => $q->whereDate('collected_at', '<=', $request->get('to'))
+                function ($q) use ($request, $settings) {
+                    [, $to] = $settings->businessDayBounds(
+                        Carbon::createFromFormat('Y-m-d', $request->get('to'), $settings->timezone())
+                    );
+
+                    return $q->where('collected_at', '<=', $to);
+                }
             )
             ->orderByDesc('collected_at')
             ->orderByDesc('id')
             ->get();
 
-        $filename = 'milk-collections-' . now()->format('Y-m-d-H-i-s') . '.csv';
+        $filename = 'milk-collections-' . $settings->now()->format('Y-m-d-H-i-s') . '.csv';
 
         $headers = [
             'Content-Type' => 'text/csv; charset=UTF-8',
@@ -294,10 +324,10 @@ class MilkCollectionController extends Controller
                 $ts  = $collection->total_solids !== null ? number_format((float) $collection->total_solids, 2, '.', '') : '';
 
                 fputcsv($file, [
-                    $collection->supplier->name ?? 'Unknown',
-                    $collection->rawMaterial->name ?? 'Unknown',
+                    $this->csvSafe($collection->supplier->name ?? 'Unknown'),
+                    $this->csvSafe($collection->rawMaterial->name ?? 'Unknown'),
                     $collection->collected_at->format('M j, Y g:i A'),
-                    ucfirst($collection->shift),
+                    $this->csvSafe(ucfirst($collection->shift)),
                     number_format($collection->quantity, 2),
                     $fat,
                     $snf,
@@ -311,5 +341,12 @@ class MilkCollectionController extends Controller
         };
 
         return new StreamedResponse($callback, 200, $headers);
+    }
+
+    private function csvSafe(?string $value): string
+    {
+        $value = (string) $value;
+
+        return preg_match('/^[=+\-@\t\r]/', $value) ? "'" . $value : $value;
     }
 }

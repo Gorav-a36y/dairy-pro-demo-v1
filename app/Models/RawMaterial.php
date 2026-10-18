@@ -36,7 +36,11 @@ class RawMaterial extends Model
     public function currentCostPerUnit(): float
     {
         $avg = $this->milkCollections()
-            ->where('collected_at', '>=', now()->subDays(30))
+            ->where(
+                'collected_at',
+                '>=',
+                Setting::current()->now()->subDays(30)->setTimezone(config('app.timezone'))
+            )
             ->avg('purchase_price');
 
         return round((float) $avg, 2);

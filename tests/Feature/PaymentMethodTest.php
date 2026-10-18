@@ -25,6 +25,7 @@ class PaymentMethodTest extends TestCase
             'name'     => 'Test User',
             'email'    => 'test@example.com',
             'password' => bcrypt('password'),
+            'role'     => 'admin',
         ])));
     }
 
@@ -65,7 +66,7 @@ class PaymentMethodTest extends TestCase
             'code'       => 'bank_transfer',
             'is_system'  => false,
             'is_active'  => true,
-            'sort_order' => 100, // seeded methods end at 99
+            'sort_order' => 2,
         ]);
     }
 
@@ -140,14 +141,14 @@ class PaymentMethodTest extends TestCase
         $this->assertTrue($bank->fresh()->is_active);
     }
 
-    public function test_cash_can_be_deactivated(): void
+    public function test_cash_cannot_be_deactivated(): void
     {
         $this->signIn();
 
         $this->patch(route('payment-methods.toggle', $this->method('cash')))
-            ->assertSessionHas('success');
+            ->assertSessionHas('error');
 
-        $this->assertFalse($this->method('cash')->is_active);
+        $this->assertTrue($this->method('cash')->is_active);
     }
 
     public function test_khata_cannot_be_deactivated(): void
@@ -181,6 +182,30 @@ class PaymentMethodTest extends TestCase
             $this->fail('Deleting a system payment method should be blocked.');
         } catch (LogicException $e) {
             $this->assertDatabaseHas('payment_methods', ['code' => 'khata']);
+        }
+    }
+
+    public function test_cash_cannot_be_deleted_through_the_model(): void
+    {
+        $cash = $this->method('cash');
+
+        try {
+            $cash->delete();
+            $this->fail('Deleting Cash should be blocked.');
+        } catch (LogicException $e) {
+            $this->assertDatabaseHas('payment_methods', ['code' => 'cash']);
+        }
+    }
+
+    public function test_cash_cannot_be_deactivated_through_the_model(): void
+    {
+        $cash = $this->method('cash');
+
+        try {
+            $cash->update(['is_active' => false]);
+            $this->fail('Deactivating Cash should be blocked.');
+        } catch (LogicException $e) {
+            $this->assertTrue($this->method('cash')->is_active);
         }
     }
 

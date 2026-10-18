@@ -8,6 +8,7 @@ use App\Models\Sale;
 use App\Models\Supplier;
 use App\Models\Worker;
 use App\Models\Waste;
+use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,9 +17,25 @@ class ReportController extends Controller
 {
     public function index(Request $request)
     {
+        $data = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ]);
+        $fromInput = $data['from'] ?? null;
+        $toInput = $data['to'] ?? null;
+
         /* ── Date range ── */
-        $from = $request->from ? Carbon::parse($request->from)->startOfDay() : Carbon::today()->startOfMonth();
-        $to   = $request->to   ? Carbon::parse($request->to)->endOfDay()   : Carbon::today()->endOfMonth();
+        $settings = Setting::current();
+        $businessNow = $settings->now();
+        $businessTimezone = $settings->timezone();
+        $from = $fromInput
+            ? Carbon::createFromFormat('Y-m-d', $fromInput, $businessTimezone)->startOfDay()
+            : $businessNow->copy()->startOfMonth()->startOfDay();
+        $to = $toInput
+            ? Carbon::createFromFormat('Y-m-d', $toInput, $businessTimezone)->endOfDay()
+            : $businessNow->copy()->endOfMonth()->endOfDay();
+        $storageFrom = $from->copy()->setTimezone(config('app.timezone'));
+        $storageTo = $to->copy()->setTimezone(config('app.timezone'));
 
         /* ── Sales ── */
         $sales = Sale::whereBetween('sale_date', [$from->format('Y-m-d'), $to->format('Y-m-d')])->get();
@@ -66,7 +83,7 @@ class ReportController extends Controller
 
         /* ── Milk Collections ── */
         $milkCollections = MilkCollection::whereHas('rawMaterial', fn ($q) => $q->where('is_milk', true))
-            ->whereBetween('collected_at', [$from, $to])
+            ->whereBetween('collected_at', [$storageFrom, $storageTo])
             ->get();
         $totalMilkLiters = (float) $milkCollections->sum('quantity');
         $avgFat          = $milkCollections->count() ? round((float) $milkCollections->avg('fat'), 2) : 0;
@@ -96,14 +113,17 @@ class ReportController extends Controller
                 DB::raw('AVG(milk_collections.fat) as avg_fat'),
                 DB::raw('AVG(milk_collections.snf) as avg_snf')
             )
-            ->whereBetween('milk_collections.collected_at', [$from, $to])
+            ->whereBetween('milk_collections.collected_at', [$storageFrom, $storageTo])
             ->groupBy('day')
             ->orderBy('day')
             ->get()
             ->keyBy('day');
 
-        /* ── Gross Profit ── */
-        $grossProfit = round($totalRevenue - $totalMilkCost, 2);
+        /* ── Gross Profit ──
+           Include every raw-material collection, not only milk collections. */
+        $totalRawMaterialCost = (float) MilkCollection::whereBetween('collected_at', [$storageFrom, $storageTo])
+            ->sum('total_amount');
+        $grossProfit = round($totalRevenue - $totalRawMaterialCost, 2);
 
         /* ── Product Performance ── */
         $productPerformance = DB::table('sale_items')
@@ -124,7 +144,7 @@ class ReportController extends Controller
             ->join('suppliers', 'suppliers.id', '=', 'milk_collections.supplier_id')
             ->join('raw_materials', 'raw_materials.id', '=', 'milk_collections.raw_material_id')
             ->where('raw_materials.is_milk', true)
-            ->whereBetween('milk_collections.collected_at', [$from, $to])
+            ->whereBetween('milk_collections.collected_at', [$storageFrom, $storageTo])
             ->select(
                 'suppliers.name',
                 DB::raw('SUM(milk_collections.quantity) as total_qty'),
@@ -172,8 +192,22 @@ class ReportController extends Controller
     /** Download a CSV of daily sales for the given date range. */
     public function export(Request $request)
     {
-        $from = $request->from ? Carbon::parse($request->from) : Carbon::today();
-        $to   = $request->to   ? Carbon::parse($request->to)   : Carbon::today();
+        $data = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ]);
+        $fromInput = $data['from'] ?? null;
+        $toInput = $data['to'] ?? null;
+
+        $settings = Setting::current();
+        $businessNow = $settings->now();
+        $businessTimezone = $settings->timezone();
+        $from = $fromInput
+            ? Carbon::createFromFormat('Y-m-d', $fromInput, $businessTimezone)
+            : $businessNow->copy()->startOfDay();
+        $to = $toInput
+            ? Carbon::createFromFormat('Y-m-d', $toInput, $businessTimezone)
+            : $businessNow->copy()->startOfDay();
 
         $sales = Sale::with('customer')
             ->whereBetween('sale_date', [$from->format('Y-m-d'), $to->format('Y-m-d')])
@@ -193,14 +227,14 @@ class ReportController extends Controller
 
             foreach ($sales as $sale) {
                 fputcsv($handle, [
-                    $sale->invoice_no,
+                    $this->csvSafe($sale->invoice_no),
                     $sale->sale_date->format('Y-m-d'),
-                    $sale->customer->name ?? 'Walk-in Customer',
+                    $this->csvSafe($sale->customer->name ?? 'Walk-in Customer'),
                     $sale->subtotal,
                     $sale->discount,
                     $sale->total_amount,
                     $sale->paid_amount,
-                    ucfirst($sale->payment_method),
+                    $this->csvSafe(ucfirst($sale->payment_method)),
                 ]);
             }
 
@@ -208,5 +242,12 @@ class ReportController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    private function csvSafe(?string $value): string
+    {
+        $value = (string) $value;
+
+        return preg_match('/^[=+\-@\t\r]/', $value) ? "'" . $value : $value;
     }
 }

@@ -28,14 +28,28 @@ class ProductController extends Controller
         // Production Batch" cards further down the page.
         $activeProducts = Product::with('rawMaterials')->where('is_active', true)->orderBy('name')->get();
 
+        $settings = Setting::current();
+
         $batchHistory = BatchProduction::with('product')
             ->when(
                 !empty($request->get('batch_from')),
-                fn ($q) => $q->whereDate('created_at', '>=', $request->get('batch_from'))
+                function ($q) use ($request, $settings) {
+                    [$from] = $settings->businessDayBounds(
+                        \Illuminate\Support\Carbon::createFromFormat('Y-m-d', $request->get('batch_from'), $settings->timezone())
+                    );
+
+                    return $q->where('created_at', '>=', $from);
+                }
             )
             ->when(
                 !empty($request->get('batch_to')),
-                fn ($q) => $q->whereDate('created_at', '<=', $request->get('batch_to'))
+                function ($q) use ($request, $settings) {
+                    [, $to] = $settings->businessDayBounds(
+                        \Illuminate\Support\Carbon::createFromFormat('Y-m-d', $request->get('batch_to'), $settings->timezone())
+                    );
+
+                    return $q->where('created_at', '<=', $to);
+                }
             )
             ->latest()
             ->take(10)

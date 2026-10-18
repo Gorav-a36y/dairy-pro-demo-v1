@@ -352,9 +352,7 @@ class SaleController extends Controller
     {
         $settings = view()->shared('settings');
 
-        return $settings
-            ? $settings->localize(now())->format('Y-m-d')
-            : now()->format('Y-m-d');
+        return ($settings ?: \App\Models\Setting::current())->now()->format('Y-m-d');
     }
 
     /**
@@ -447,7 +445,7 @@ class SaleController extends Controller
             ->latest('sale_date')
             ->latest('id')
             ->get();
-        $filename = 'sales-history-' . now()->format('Y-m-d-H-i-s') . '.csv';
+        $filename = 'sales-history-' . \App\Models\Setting::current()->now()->format('Y-m-d-H-i-s') . '.csv';
         $headers = [
             'Content-Type' => 'text/csv; charset=UTF-8',
             'Content-Disposition' => "attachment; filename=\"$filename\"",

@@ -28,6 +28,7 @@ class BatchProductionTest extends TestCase
             'name'     => 'Test User',
             'email'    => 'test@example.com',
             'password' => bcrypt('password'),
+            'role'     => 'admin',
         ])));
 
         $this->milk = RawMaterial::create([
@@ -122,15 +123,28 @@ class BatchProductionTest extends TestCase
         $this->assertSame(2, BatchProduction::count());
     }
 
-    public function test_inactive_raw_material_already_in_recipe_can_still_be_used(): void
+    public function test_inactive_raw_material_in_recipe_blocks_the_batch(): void
     {
         $this->product->rawMaterials()->sync([
             $this->oldSugar->id => ['quantity_required' => 1],
         ]);
 
-        $this->run_batch(2)->assertSessionHas('success');
+        $this->run_batch(2)->assertSessionHas('error');
 
-        $this->assertEquals(3, $this->oldSugar->fresh()->stock_qty);
+        $this->assertEquals(5, $this->oldSugar->fresh()->stock_qty);
+        $this->assertNothingChanged();
+    }
+
+    public function test_out_of_stock_raw_material_blocks_the_batch(): void
+    {
+        $this->cream->update(['stock_qty' => 0]);
+
+        $this->run_batch(1)->assertSessionHas('error');
+
+        $this->assertEquals(50, $this->milk->fresh()->stock_qty);
+        $this->assertEquals(0, $this->cream->fresh()->stock_qty);
+        $this->assertEquals(5, $this->product->fresh()->stock_qty);
+        $this->assertSame(0, BatchProduction::count());
     }
 
     // ------------------------------------------------------------------

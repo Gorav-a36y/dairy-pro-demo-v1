@@ -31,8 +31,8 @@
             <i data-lucide="filter" class="h-4 w-4"></i> Apply
         </button>
         <div class="flex gap-2 sm:ml-auto">
-            <a href="{{ route('reports.index', ['from' => now()->startOfMonth()->format('Y-m-d'), 'to' => now()->endOfMonth()->format('Y-m-d')]) }}" class="inline-flex items-center gap-1.5 rounded-control border border-outline-variant text-ink-variant text-xs font-semibold px-3 py-2 hover:bg-surface-container-low transition">This Month</a>
-            <a href="{{ route('reports.index', ['from' => now()->subMonth()->startOfMonth()->format('Y-m-d'), 'to' => now()->subMonth()->endOfMonth()->format('Y-m-d')]) }}" class="inline-flex items-center gap-1.5 rounded-control border border-outline-variant text-ink-variant text-xs font-semibold px-3 py-2 hover:bg-surface-container-low transition">Last Month</a>
+            <a href="{{ route('reports.index', ['from' => $settings->now()->startOfMonth()->format('Y-m-d'), 'to' => $settings->now()->endOfMonth()->format('Y-m-d')]) }}" class="inline-flex items-center gap-1.5 rounded-control border border-outline-variant text-ink-variant text-xs font-semibold px-3 py-2 hover:bg-surface-container-low transition">This Month</a>
+            <a href="{{ route('reports.index', ['from' => $settings->now()->subMonth()->startOfMonth()->format('Y-m-d'), 'to' => $settings->now()->subMonth()->endOfMonth()->format('Y-m-d')]) }}" class="inline-flex items-center gap-1.5 rounded-control border border-outline-variant text-ink-variant text-xs font-semibold px-3 py-2 hover:bg-surface-container-low transition">Last Month</a>
             <a href="{{ route('reports.export', ['from' => $from->format('Y-m-d'), 'to' => $to->format('Y-m-d')]) }}" class="inline-flex items-center gap-2 rounded-control border border-outline-variant text-ink-variant text-sm font-semibold px-5 py-2.5 hover:bg-surface-container-low transition">
                 <i data-lucide="download" class="h-4 w-4"></i> CSV
             </a>
@@ -59,7 +59,7 @@
         <div class="bg-white rounded-bento border border-outline-variant shadow-bento p-5">
             <span class="h-10 w-10 rounded-control bg-forest-50 flex items-center justify-center mb-3"><i data-lucide="trending-up" class="h-5 w-5 text-forest-700"></i></span>
             <p class="text-2xl font-serif font-semibold {{ $grossProfit >= 0 ? 'text-forest-700' : 'text-clay' }} tabular">{{ $settings->currency }} {{ number_format($grossProfit, 0) }}</p>
-            <p class="text-xs text-outline mt-1">Gross Profit (Revenue − Milk Cost)</p>
+            <p class="text-xs text-outline mt-1">Gross Profit (Revenue − All Raw Material Purchases)</p>
         </div>
     </div>
 

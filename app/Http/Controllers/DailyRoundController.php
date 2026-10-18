@@ -9,6 +9,7 @@ use App\Models\DailyRound;
 use App\Models\PaymentMethod;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\Setting;
 use App\Services\InvoiceNumberGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,7 +19,7 @@ class DailyRoundController extends Controller
 {
     public function index()
     {
-        $today = now()->toDateString();
+        $today = Setting::current()->now()->toDateString();
 
         $customers = Customer::where('is_daily_customer', true)
             ->with([
@@ -84,6 +85,8 @@ class DailyRoundController extends Controller
                 $blocked = 'Item no longer exists';
             } elseif (! $item->is_active) {
                 $blocked = 'Item is inactive';
+            } elseif ((float) $item->selling_price <= 0) {
+                $blocked = 'Selling price must be greater than zero';
             } elseif ($stock <= 0) {
                 $blocked = 'Out of stock';
             }
@@ -106,7 +109,7 @@ class DailyRoundController extends Controller
         return SaleItem::whereHas('sale', function ($q) use ($customerId) {
                 $q->where('customer_id', $customerId)
                     ->where('source', Sale::SOURCE_DAILY_ROUND)
-                    ->whereDate('sale_date', now()->toDateString());
+                    ->whereDate('sale_date', Setting::current()->now()->toDateString());
             })
             ->where('item_type', $di->itemType())
             ->where('item_id', $di->product_id ?? $di->raw_material_id)
@@ -133,7 +136,7 @@ class DailyRoundController extends Controller
 
         $loggedCount = 0;
         $skipped     = [];
-        $today       = now()->toDateString();
+        $today       = Setting::current()->now()->toDateString();
 
         DB::transaction(function () use (
             $deliveries,
@@ -276,6 +279,11 @@ class DailyRoundController extends Controller
                     // POS does not sell inactive items, and neither does the round.
                     if (! $item->is_active) {
                         $skipped[] = $customer->name . ' (' . $item->name . ' is inactive)';
+                        continue;
+                    }
+
+                    if ((float) $item->selling_price <= 0) {
+                        $skipped[] = $customer->name . ' (' . $item->name . ' has no valid selling price)';
                         continue;
                     }
 

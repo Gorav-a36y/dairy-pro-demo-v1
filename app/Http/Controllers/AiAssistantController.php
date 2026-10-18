@@ -283,7 +283,7 @@ class AiAssistantController extends Controller
         });
 
         // ---------------- MILK COLLECTION ----------------
-        $sections[] = $this->section('MILK COLLECTION AND BUYING', function () use ($currency, $today, $monthStart) {
+        $sections[] = $this->section('MILK COLLECTION AND BUYING', function () use ($currency, $today, $monthStart, $now) {
             $rows = $this->between(MilkCollection::query(), 'collected_at', $monthStart, $today)
                 ->selectRaw('raw_material_id, unit, SUM(quantity) as qty, SUM(total_amount) as spend, AVG(purchase_price) as avg_price')
                 ->groupBy('raw_material_id', 'unit')
@@ -291,7 +291,8 @@ class AiAssistantController extends Controller
 
             $names = RawMaterial::whereIn('id', $rows->pluck('raw_material_id'))->pluck('name', 'id');
 
-            $todaySpend = MilkCollection::whereDate('collected_at', $today)->sum('total_amount');
+            [$todayStart, $todayEnd] = Setting::current()->businessDayBounds($now);
+            $todaySpend = MilkCollection::whereBetween('collected_at', [$todayStart, $todayEnd])->sum('total_amount');
 
             $lines = [];
             $lines[] = "- Bought today: {$currency} " . $this->n($todaySpend);
@@ -424,6 +425,16 @@ class AiAssistantController extends Controller
     /** Filter by a date column from one day to another, including both days. */
     protected function between($query, string $column, string $from, string $to)
     {
+        if (in_array($column, ['collected_at', 'created_at'], true)) {
+            $settings = Setting::current();
+            $fromDate = Carbon::createFromFormat('Y-m-d', $from, $settings->timezone());
+            $toDate = Carbon::createFromFormat('Y-m-d', $to, $settings->timezone());
+            [$storageFrom] = $settings->businessDayBounds($fromDate);
+            [, $storageTo] = $settings->businessDayBounds($toDate);
+
+            return $query->whereBetween($column, [$storageFrom, $storageTo]);
+        }
+
         return $query->whereDate($column, '>=', $from)->whereDate($column, '<=', $to);
     }
 

@@ -1,7 +1,7 @@
 @php
     $isEdit = isset($worker);
     $editRouteTemplate = route('workers.edit', ['worker' => '___ID___']);
-    $today = now()->format('Y-m-d');
+    $today = $settings->now()->format('Y-m-d');
 @endphp
 
 <form action="{{ $isEdit ? route('workers.update', $worker) : route('workers.store') }}" method="POST"

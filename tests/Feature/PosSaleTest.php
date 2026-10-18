@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CustomerTransaction;
 use App\Models\Sale;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\DairyTestHelpers;
 use Tests\TestCase;
@@ -23,6 +24,7 @@ class PosSaleTest extends TestCase
     private function payload(array $overrides = []): array
     {
         return array_replace([
+            'submit_token'    => (string) Str::uuid(),
             'payment_method'  => 'cash',
             'amount_received' => 1000,
             'action'          => 'save',

@@ -7,6 +7,7 @@ use App\Models\DailyRound;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\Concerns\DairyTestHelpers;
 use Tests\TestCase;
 
@@ -235,6 +236,7 @@ class DailyRoundTest extends TestCase
         $this->deliver($customer, ['product:' . $a->id => 2, 'product:' . $b->id => 1]); // 250 on khata
 
         $this->post(route('khata.customer.store'), [
+            'submit_token' => (string) Str::uuid(),
             'customer_id' => $customer->id,
             'amount'      => 100,
         ])->assertSessionHasNoErrors();

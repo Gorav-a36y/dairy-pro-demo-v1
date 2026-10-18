@@ -74,7 +74,7 @@ class Customer extends Model
             return ! SaleItem::whereHas('sale', function ($q) {
                     $q->where('customer_id', $this->id)
                         ->where('source', Sale::SOURCE_DAILY_ROUND)
-                        ->whereDate('sale_date', now()->toDateString());
+                        ->whereDate('sale_date', Setting::current()->now()->toDateString());
                 })
                 ->where('item_type', $di->itemType())
                 ->where('item_id', $di->product_id ?? $di->raw_material_id)
@@ -99,7 +99,7 @@ class Customer extends Model
         return SaleItem::whereHas('sale', function ($q) {
                 $q->where('customer_id', $this->id)
                     ->where('source', Sale::SOURCE_DAILY_ROUND)
-                    ->whereDate('sale_date', now()->toDateString())
+                    ->whereDate('sale_date', Setting::current()->now()->toDateString())
                     ->whereColumn('paid_amount', '<', 'total_amount');
             })
             ->whereIn('item_type', ['product', 'raw_material'])

@@ -102,7 +102,6 @@
 
     $lines[] = $lr('SUBTOTAL', $money($sale->subtotal));
     if ($sale->discount > 0) { $lines[] = $lr('DISCOUNT', '- ' . $money($sale->discount)); }
-    $lines[] = $dash;
     $lines[] = $lr('TOTAL', $money($sale->total_amount));
     $lines[] = $dash;
     if ($paidNow > 0)   { $lines[] = $lr('PAID NOW', $money($paidNow)); }

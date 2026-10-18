@@ -11,18 +11,25 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // Settings are loaded ONCE per request, not once for every view,
+        // partial and Blade component.
+        $this->app->scoped('app.settings', function () {
+            try {
+                return Schema::hasTable('settings') ? Setting::current() : null;
+            } catch (\Throwable $e) {
+                // Settings table not migrated yet — views fall back to defaults.
+                return null;
+            }
+        });
     }
 
     public function boot(): void
     {
         View::composer('*', function ($view) {
-            try {
-                if (Schema::hasTable('settings')) {
-                    $view->with('settings', Setting::current());
-                }
-            } catch (\Throwable $e) {
-                // Settings table not migrated yet — views fall back to defaults.
+            $settings = $this->app->make('app.settings');
+
+            if ($settings !== null) {
+                $view->with('settings', $settings);
             }
         });
     }

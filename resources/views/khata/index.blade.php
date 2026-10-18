@@ -189,12 +189,12 @@
                                             </td>
                                             <td class="px-5 py-3 text-center">
                                                 @if($tx->type === 'khata' && $tx->sale_id)
-                                                    <a href="{{ route('sales.show', $tx->sale_id) }}" target="_blank"
+                                                    <a href="{{ route('sales.show', $tx->sale_id) }}"
                                                        class="inline-flex items-center justify-center h-8 w-8 rounded-control hover:bg-surface-container-low text-ink-variant transition" title="View Receipt">
                                                         <i data-lucide="eye" class="h-4 w-4"></i>
                                                     </a>
                                                 @elseif($tx->type === 'payment')
-                                                    <a href="{{ route('khata.customer.receipt', $tx->id) }}" target="_blank"
+                                                    <a href="{{ route('khata.customer.receipt', $tx->id) }}"
                                                        class="inline-flex items-center justify-center h-8 w-8 rounded-control hover:bg-surface-container-low text-ink-variant transition" title="View Receipt">
                                                         <i data-lucide="eye" class="h-4 w-4"></i>
                                                     </a>
@@ -376,12 +376,12 @@
                                             </td>
                                             <td class="px-5 py-3 text-center">
                                                 @if($tx->type === 'purchase' && $tx->milk_collection_id)
-                                                    <a href="{{ route('milk-collections.receipt', $tx->milk_collection_id) }}" target="_blank"
+                                                    <a href="{{ route('milk-collections.receipt', $tx->milk_collection_id) }}"
                                                        class="inline-flex items-center justify-center h-8 w-8 rounded-control hover:bg-surface-container-low text-ink-variant transition" title="View Receipt">
                                                         <i data-lucide="eye" class="h-4 w-4"></i>
                                                     </a>
                                                 @elseif($tx->type === 'payment')
-                                                    <a href="{{ route('khata.supplier.receipt', $tx->id) }}" target="_blank"
+                                                    <a href="{{ route('khata.supplier.receipt', $tx->id) }}"
                                                        class="inline-flex items-center justify-center h-8 w-8 rounded-control hover:bg-surface-container-low text-ink-variant transition" title="View Receipt">
                                                         <i data-lucide="eye" class="h-4 w-4"></i>
                                                     </a>

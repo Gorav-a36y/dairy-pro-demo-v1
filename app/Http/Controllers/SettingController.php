@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PaymentMethod;
 use App\Models\Setting;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class SettingController extends Controller
 {
     public function edit()
     {
         $setting = Setting::current();
-        $paymentMethods = \App\Models\PaymentMethod::ordered()->get();
+        $paymentMethods = PaymentMethod::ordered()->get();
 
         return view('settings.edit', compact('setting', 'paymentMethods'));
     }
@@ -22,7 +24,8 @@ class SettingController extends Controller
             'phone'          => 'nullable|string|max:30',
             'address'        => 'nullable|string|max:500',
             'currency'       => 'required|string|max:10',
-            'invoice_region' => 'required|string|max:50',
+            // Only the regions the app knows a timezone for.
+            'invoice_region' => ['required', 'string', Rule::in(array_keys(Setting::REGION_TIMEZONES))],
             'ollama_api_key' => 'nullable|string|max:1000',
         ]);
 

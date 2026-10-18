@@ -26,7 +26,7 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [AuthenticatedSessionController::class, 'store']);
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'admin'])->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -88,7 +88,7 @@ Route::middleware('auth')->group(function () {
         ->name('khata.supplier.receipt');
 
     // FIXED: destroy() replaced with toggleActive() — excluded, toggle route added below
-    Route::resource('workers', WorkerController::class)->except(['destroy']);
+    Route::resource('workers', WorkerController::class)->except(['destroy', 'show']);
     Route::patch('/workers/{worker}/toggle', [WorkerController::class, 'toggleActive'])->name('workers.toggle');
 
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');

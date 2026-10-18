@@ -124,8 +124,9 @@
                     </div>
                     <template x-for="c in filteredCustomersByName" :key="c.id">
                         <button type="button" @click="selectExistingName(c)"
+                                :class="c.name.toLowerCase() === name.toLowerCase().trim() ? 'bg-clay-container/40 text-clay' : ''"
                                 class="w-full text-left px-4 py-2.5 text-sm hover:bg-surface-container-low flex items-center justify-between gap-3 transition">
-                            <span class="font-medium text-ink" x-text="c.name"></span>
+                            <span class="font-medium" :class="c.name.toLowerCase() === name.toLowerCase().trim() ? 'text-clay' : 'text-ink'" x-text="c.name"></span>
                         </button>
                     </template>
                 </div>

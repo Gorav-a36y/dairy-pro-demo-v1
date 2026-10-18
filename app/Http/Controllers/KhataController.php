@@ -146,7 +146,10 @@ class KhataController extends Controller
 
                 $currentBalance = $customer->currentBalance();
 
-                if ($amount > round($currentBalance, 2) + 0.01) {
+                $amountCents = (int) round($amount * 100);
+                $balanceCents = (int) round($currentBalance * 100);
+
+                if ($amountCents > $balanceCents) {
                     return back()
                         ->with('error', 'Customer remaining balance is only ' . $this->money($currentBalance) . '. You cannot record a payment of ' . $this->money($amount) . '.')
                         ->withInput();
@@ -234,7 +237,10 @@ class KhataController extends Controller
 
                 $currentBalance = $supplier->currentBalance();
 
-                if ($amount > round($currentBalance, 2) + 0.01) {
+                $amountCents = (int) round($amount * 100);
+                $balanceCents = (int) round($currentBalance * 100);
+
+                if ($amountCents > $balanceCents) {
                     return back()
                         ->with('error', 'Supplier remaining balance is only ' . $this->money($currentBalance) . '. You cannot record a payment of ' . $this->money($amount) . '.')
                         ->withInput();
@@ -285,9 +291,7 @@ class KhataController extends Controller
     {
         $settings = view()->shared('settings');
 
-        return $settings
-            ? $settings->localize(now())->format('Y-m-d')
-            : now()->format('Y-m-d');
+        return ($settings ?: \App\Models\Setting::current())->now()->format('Y-m-d');
     }
 
     /** 1500 -> "1500", 1500.4 -> "1500.40" (never hide the paisa in a message). */
@@ -375,7 +379,7 @@ class KhataController extends Controller
                 ->orderBy('id')
                 ->get();
 
-            $filename = 'customer-khata-' . (Str::slug($entity->name) ?: 'ledger') . '-' . now()->format('Y-m-d-H-i-s') . '.csv';
+            $filename = 'customer-khata-' . (Str::slug($entity->name) ?: 'ledger') . '-' . \App\Models\Setting::current()->now()->format('Y-m-d-H-i-s') . '.csv';
         } elseif ($tab === 'supplier') {
             $entity = Supplier::find($id);
             if (!$entity) {
@@ -390,7 +394,7 @@ class KhataController extends Controller
                 ->orderBy('id')
                 ->get();
 
-            $filename = 'supplier-khata-' . (Str::slug($entity->name) ?: 'ledger') . '-' . now()->format('Y-m-d-H-i-s') . '.csv';
+            $filename = 'supplier-khata-' . (Str::slug($entity->name) ?: 'ledger') . '-' . \App\Models\Setting::current()->now()->format('Y-m-d-H-i-s') . '.csv';
         } else {
             return redirect()->route('khata.index')->with('error', 'Unknown ledger.');
         }

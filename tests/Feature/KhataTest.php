@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\CustomerTransaction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\Concerns\DairyTestHelpers;
 use Tests\TestCase;
 
@@ -34,6 +35,7 @@ class KhataTest extends TestCase
         $this->khata($customer, 500, now()->toDateString());
 
         $this->post(route('khata.customer.store'), [
+            'submit_token' => (string) Str::uuid(),
             'customer_id' => $customer->id,
             'amount'      => 200,
         ])->assertSessionHasNoErrors();
@@ -47,6 +49,7 @@ class KhataTest extends TestCase
         $this->khata($customer, 100, now()->toDateString());
 
         $this->post(route('khata.customer.store'), [
+            'submit_token' => (string) Str::uuid(),
             'customer_id' => $customer->id,
             'amount'      => 500,
         ])->assertSessionHas('error');

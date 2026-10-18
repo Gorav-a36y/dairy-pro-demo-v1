@@ -6,7 +6,7 @@
 <div class="space-y-6">
     <div>
         <p class="text-[11px] font-semibold uppercase tracking-wider text-outline">Morning Overview</p>
-        <h2 class="font-serif text-2xl font-semibold text-ink">{{ now()->format('F j, Y') }}</h2>
+        <h2 class="font-serif text-2xl font-semibold text-ink">{{ $settings->now()->format('F j, Y') }}</h2>
     </div>
 
     {{-- 4 stat cards --}}

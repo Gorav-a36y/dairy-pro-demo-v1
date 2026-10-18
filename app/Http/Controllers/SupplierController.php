@@ -17,9 +17,23 @@ use Illuminate\Validation\ValidationException;
  */
 class SupplierController extends Controller
 {
+    private const DUPLICATE_NAME_MESSAGE = 'A supplier with this name already exists.';
+    private const DUPLICATE_PHONE_MESSAGE = 'A supplier with this phone number already exists.';
+
     public function index(Request $request)
     {
-        $suppliers = Supplier::when($request->search, fn ($q) => $q->where('name', 'like', "%{$request->search}%"))
+        // Search must be plain text. Anything else (for example ?search[]=x
+        // in a changed URL) is ignored instead of crashing the page.
+        $search = $request->query('search');
+        $search = is_string($search) ? trim($search) : '';
+
+        $suppliers = Supplier::query()
+            ->when($search !== '', function ($q) use ($search) {
+                // Treat \ % and _ as normal characters, not LIKE wildcards.
+                $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
+
+                $q->whereRaw("name LIKE ? ESCAPE '\\'", ['%' . $escaped . '%']);
+            })
             ->orderBy('name')
             ->get()
             ->map(function ($supplier) {
@@ -52,7 +66,7 @@ class SupplierController extends Controller
             ],
         ], [
             'phone.regex'  => 'Enter a valid phone number (7 to 15 digits). Spaces, dashes and +92 are fine.',
-            'phone.unique' => 'A supplier with this phone number already exists.',
+            'phone.unique' => self::DUPLICATE_PHONE_MESSAGE,
         ]);
 
         try {
@@ -61,19 +75,31 @@ class SupplierController extends Controller
                 'phone' => $data['phone'],
             ]);
         } catch (UniqueConstraintViolationException $e) {
-            // Database-level protection (two requests saving the same phone at once).
-            throw ValidationException::withMessages([
-                'phone' => 'A supplier with this phone number already exists.',
-            ]);
+            // Database-level protection: two saves arrived at the same moment
+            // and the unique index stopped one of them. Say which value clashed.
+            $errors = [];
+
+            if (Supplier::where('phone', $data['phone'])->exists()) {
+                $errors['phone'] = self::DUPLICATE_PHONE_MESSAGE;
+            }
+
+            if (Supplier::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($data['name']))])->exists()) {
+                $errors['name'] = self::DUPLICATE_NAME_MESSAGE;
+            }
+
+            throw ValidationException::withMessages(
+                $errors ?: ['name' => 'This supplier could not be saved. Please try again.']
+            );
         }
 
         return redirect()->route('suppliers.index')->with('success', 'Supplier added successfully.');
     }
 
     /**
-     * Trim the name and save the phone in one standard form
-     * (0300-1234567 and 03001234567 become the same number).
-     * A non-text value is left for validation to reject.
+     * Clean the name (trim both ends and turn any run of spaces inside it
+     * into one space, so "Ali  Khan" becomes "Ali Khan") and save the phone
+     * in one standard form (0300-1234567 and 03001234567 become the same
+     * number). A non-text value is left for validation to reject.
      */
     protected function cleanInput(Request $request): void
     {
@@ -89,7 +115,7 @@ class SupplierController extends Controller
 
             $clean[$field] = $field === 'phone'
                 ? PhoneNumber::normalize($value)
-                : trim($value);
+                : trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
         }
 
         $request->merge($clean);
@@ -105,7 +131,7 @@ class SupplierController extends Controller
 
             $exists = Supplier::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($value))])->exists();
             if ($exists) {
-                $fail('A supplier with this name already exists.');
+                $fail(self::DUPLICATE_NAME_MESSAGE);
             }
         };
     }

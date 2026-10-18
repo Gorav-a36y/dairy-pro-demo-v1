@@ -26,6 +26,7 @@ class ProductTest extends TestCase
             'name'     => 'Test User',
             'email'    => 'test@example.com',
             'password' => bcrypt('password'),
+            'role'     => 'admin',
         ])));
 
         $this->milk = RawMaterial::create([

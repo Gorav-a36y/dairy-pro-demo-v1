@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\InvoiceSequence;
+use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 
 class InvoiceNumberGenerator
@@ -16,7 +17,7 @@ class InvoiceNumberGenerator
      */
     public static function next(string $prefix): string
     {
-        $dateKey = now()->format('Ymd');
+        $dateKey = Setting::current()->now()->format('Ymd');
 
         return DB::transaction(function () use ($prefix, $dateKey) {
             $sequence = InvoiceSequence::where('prefix', $prefix)

@@ -27,4 +27,9 @@ class BatchProduction extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function materialConsumptions()
+    {
+        return $this->hasMany(BatchMaterialConsumption::class);
+    }
 }

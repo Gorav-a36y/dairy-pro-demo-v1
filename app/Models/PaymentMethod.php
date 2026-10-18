@@ -7,8 +7,8 @@ use LogicException;
 
 class PaymentMethod extends Model
 {
-    // The two payment methods the system depends on internally for khata
-    // logic (POS/Milk Collection payment behavior branches on these codes).
+    // Built-in methods with fixed behavior in POS and Milk Collection.
+    const CASH_CODE = 'cash';
     const KHATA_CODE = 'khata';
     const PARTIAL_KHATA_CODE = 'partial_khata';
 
@@ -29,14 +29,14 @@ class PaymentMethod extends Model
     {
         // System methods (Khata, Partial Khata) can never be deleted.
         static::deleting(function (PaymentMethod $method) {
-            if ($method->is_system) {
+            if ($method->isSystemMethod()) {
                 throw new LogicException("{$method->name} is a system payment method and cannot be deleted.");
             }
         });
 
         // System methods must stay active, keep their code, and stay "system".
         static::updating(function (PaymentMethod $method) {
-            if (! $method->getOriginal('is_system')) {
+            if (! $method->isSystemMethod()) {
                 return;
             }
 
@@ -44,6 +44,17 @@ class PaymentMethod extends Model
                 throw new LogicException("{$method->getOriginal('name')} is a system payment method and cannot be deactivated or changed this way.");
             }
         });
+    }
+
+    public function isSystemMethod(): bool
+    {
+        $code = $this->getRawOriginal('code') ?? $this->code;
+
+        return $this->is_system || in_array($code, [
+            self::CASH_CODE,
+            self::KHATA_CODE,
+            self::PARTIAL_KHATA_CODE,
+        ], true);
     }
 
     public function scopeActive($query)

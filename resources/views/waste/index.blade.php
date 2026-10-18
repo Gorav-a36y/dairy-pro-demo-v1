@@ -71,8 +71,8 @@
             <div>
                 <label class="block text-xs font-semibold text-ink-variant mb-1.5 uppercase tracking-wide">Date</label>
                 <input type="date" name="wasted_at" required
-                       value="{{ old('wasted_at', now()->toDateString()) }}"
-                       max="{{ now()->toDateString() }}"
+                       value="{{ old('wasted_at', $settings->now()->toDateString()) }}"
+                       max="{{ $settings->now()->toDateString() }}"
                        class="w-full rounded-control border border-outline-variant px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-forest-700 focus:border-forest-700">
                 <p class="text-[11px] text-outline mt-1">Today by default. A future date is not allowed.</p>
             </div>
